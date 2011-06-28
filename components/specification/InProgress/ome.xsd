@@ -1439,6 +1439,14 @@ ExperimenterRef is required for all Images with well formed LSIDs.
 							</xsd:documentation>
 						</xsd:annotation>
 					</xsd:attribute>
+					<xsd:attribute name="NominalCs" use="optional" type="PositiveFloat">
+						<xsd:annotation>
+							<xsd:appinfo>em-addition</xsd:appinfo>
+							<xsd:documentation>
+								The coefficient of Spherical Abberation (nominalCs). millimeters[mm]
+							</xsd:documentation>
+						</xsd:annotation>
+					</xsd:attribute>
 				</xsd:extension>
 			</xsd:complexContent>
 		</xsd:complexType>
@@ -1582,6 +1590,7 @@ ExperimenterRef is required for all Images with well formed LSIDs.
 								<xsd:enumeration value="BandPass"/>
 								<xsd:enumeration value="MultiPass"/>
 								<xsd:enumeration value="NeutralDensity"/>
+								<xsd:enumeration value="Enegry"><xsd:annotation><xsd:appinfo>em-addition</xsd:appinfo></xsd:annotation></xsd:enumeration>
 								<xsd:enumeration value="Other"/>
 							</xsd:restriction>
 						</xsd:simpleType>
@@ -2144,6 +2153,22 @@ ExperimenterRef is required for all Images with well formed LSIDs.
 							</xsd:documentation>
 						</xsd:annotation>
 					</xsd:attribute>
+					<xsd:attribute name="AcceleratingVoltage" use="optional" type="PositiveFloat">
+						<xsd:annotation>
+							<xsd:appinfo>em-addition</xsd:appinfo>
+							<xsd:documentation>
+								The voltage of the electron source. kilovolts[kV]
+							</xsd:documentation>
+						</xsd:annotation>
+					</xsd:attribute>
+					<xsd:attribute name="ElectronDose" use="optional" type="PositiveFloat">
+						<xsd:annotation>
+							<xsd:appinfo>em-addition</xsd:appinfo>
+							<xsd:documentation>
+								The dose from the electron source. electrons per ångström squared[e/A2]
+							</xsd:documentation>
+						</xsd:annotation>
+					</xsd:attribute>
 				</xsd:extension>
 			</xsd:complexContent>
 		</xsd:complexType>
@@ -2257,6 +2282,14 @@ ExperimenterRef is required for all Images with well formed LSIDs.
 							<xsd:documentation>
 								The RefractiveIndex is that of the immersion medium. This is
 								a ratio so it also unit-less. [units:none]
+							</xsd:documentation>
+						</xsd:annotation>
+					</xsd:attribute>
+					<xsd:attribute name="Defocus" use="optional" type="PositiveFloat">
+						<xsd:annotation>
+							<xsd:appinfo>em-addition</xsd:appinfo>
+							<xsd:documentation>
+								The defocus applied to the electron beam. nanometres[nm]
 							</xsd:documentation>
 						</xsd:annotation>
 					</xsd:attribute>
