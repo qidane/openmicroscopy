@@ -64,7 +64,8 @@
     </target>
 
     <!-- Disable the tests that cause ./build.py test-unit to fail -->
-    <target name="test-unit" description="No-op"/>
+    <target name="test-unit" description="No-Op"/>
     <target name="test" description="No-op"/>
+    <target name="integration" description="No-op"/>
 
 </project>
