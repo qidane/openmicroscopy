@@ -19,6 +19,8 @@ setup(
     
     install_requires = [
         "TurboGears >= 1.0.2.2",
+        "TurboKid",
+        "SQLObject >= 0.10.1",
     ],
     scripts = ["start-validator.py"],
     zip_safe=False,

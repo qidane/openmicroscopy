@@ -3,7 +3,7 @@
 import turbogears, cherrypy, re
 from turbogears import controllers, expose, validators
 from docutils.core import publish_parts
-from time import gmtime, strftime	
+from time import gmtime, strftime
 import os
 
 from OmeValidator import *
@@ -85,7 +85,7 @@ class Root(controllers.Root):
 			turbogears.flash("File uploaded successfully: %s." % (time+upload_file.filename))
 			raise turbogears.redirect("/fileslist")
 		
-	@expose(html="validator.templates.fileslist")
+	@expose(template="validator.templates.fileslist")
 	def fileslist(self):
 		filenames = cherrypy.session.get('filenames', [])
 		if len(filenames) > 0:
@@ -93,7 +93,7 @@ class Root(controllers.Root):
 		else:
 			raise turbogears.redirect("/")
 	
-	@expose(html="validator.templates.result")
+	@expose(template="validator.templates.result")
 	def result(self, filename):
 		# list from session
 		filenames = cherrypy.session.get('filenames', [])

@@ -61,7 +61,6 @@ if not os.path.isdir(LOCAL_DIR):
 from validator.controllers import Root
 from cherrypy.filters import sessionfilter
 
-cherrypy.root = Root()
 cherrypy.config.update({
 	            'server.log_to_screen': True,
 	            'server.environment': 'production',
