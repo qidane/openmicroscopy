@@ -24,8 +24,12 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import ome.util.Utils;
+import ome.util.checksum.ChecksumProviderFactory;
+import ome.util.checksum.ChecksumProviderFactoryImpl;
+import ome.util.checksum.ChecksumType;
 import omero.api.ClientCallback;
 import omero.api.ClientCallbackPrxHelper;
 import omero.api.IAdminPrx;
@@ -152,6 +156,17 @@ public class client {
      * adjusted during a single session.
      */
     private volatile Resources __resources;
+
+    /**
+     * Whether or not remote calls are allowed during shutdown.
+     * If false (the default), then the instance will try to
+     * connect to the server and free any resources. Otherwise,
+     * a fastShutdown will take place. The most common reason
+     * to perform a fast shutdown is the loss of network
+     * connection. Calling "waitForShutdown" on the Ice stack
+     * without the proper connection will hang. (See #9673)
+     */
+    private AtomicBoolean fastShutdown = new AtomicBoolean(false);
 
     /**
      * @see #isSecure()
@@ -368,6 +383,15 @@ public class client {
         // Store this instance for cleanup on shutdown.
         CLIENTS.add(this);
 
+    }
+
+    /**
+     * Sets the {@link #fastShutdown} flag. By setting this
+     * to true, you will prevent proper clean up. This should
+     * only be used in the case of network loss (or similar).
+     */
+    public boolean setFastShutdown(boolean fastShutdown) {
+        return this.fastShutdown.getAndSet(fastShutdown);
     }
 
     /**
@@ -831,8 +855,9 @@ public class client {
             }
         }
 
+        final boolean fast = this.fastShutdown.get();
         try {
-            if (oldSf != null) {
+            if (oldSf != null && !fast) {
                 oldSf = ServiceFactoryPrxHelper.uncheckedCast(oldSf.ice_oneway());
             }
         } catch (Ice.ConnectionLostException cle) {
@@ -847,7 +872,9 @@ public class client {
             // ok. client is having network issues
         } finally {
             try {
-                oldIc.destroy();
+                if (oldIc != null && !fast) {
+                    oldIc.destroy();
+                }
             } finally {
                 CLIENTS.remove(this);
             }
@@ -901,9 +928,9 @@ public class client {
      * Calculates the local sha1 for a file.
      */
     public String sha1(File file) {
-        return Utils.bytesToHex(
-                Utils.pathToSha1(
-                        file.getAbsolutePath()));
+        ChecksumProviderFactory cpf = new ChecksumProviderFactoryImpl();
+        return cpf.getProvider(ChecksumType.SHA1).putFile(
+                        file.getAbsolutePath()).checksumAsString();
     }
 
     public OriginalFile upload(File file) throws ServerError, IOException {

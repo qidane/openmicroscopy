@@ -252,6 +252,8 @@ class TextualAnnotationsUI
 		
 		previousComments = new JScrollPane();
 		previousComments.setBorder(null);
+		setBorder(new SeparatorOneLineBorder());
+		setBackground(UIUtilities.BACKGROUND_COLOR);
 	}
 	
 	/**
@@ -273,8 +275,7 @@ class TextualAnnotationsUI
 	private void buildGUI()
 	{
 		removeAll();
-    	setBorder(new SeparatorOneLineBorder());
-		setBackground(UIUtilities.BACKGROUND_COLOR);
+    	if (!model.isAnnotationLoaded()) return;
 		JScrollPane pane = new JScrollPane(commentArea);
 		Dimension d = pane.getPreferredSize();
 		pane.getViewport().setPreferredSize(new Dimension(d.width, 60));
@@ -506,23 +507,20 @@ class TextualAnnotationsUI
 	 * Clears the UI.
 	 * @see AnnotationUI#clearDisplay()
 	 */
-	protected void clearDisplay() 
-	{ 
+	protected void clearDisplay() {}
+	
+	/**
+	 * Clears the data to save.
+	 * @see AnnotationUI#clearData(Object)
+	 */
+	protected void clearData(Object oldObject)
+	{
 		if (annotationToRemove != null) annotationToRemove.clear();
 		annotationToDisplay = null;
 		if (previousComments != null)
 			previousComments.getViewport().removeAll();
 		originalText = DEFAULT_TEXT_COMMENT;
 		setAreaText(DEFAULT_TEXT_COMMENT, true);
-	}
-	
-	/**
-	 * Clears the data to save.
-	 * @see AnnotationUI#clearData()
-	 */
-	protected void clearData()
-	{
-		clearDisplay();
 	}
 	
 	/**

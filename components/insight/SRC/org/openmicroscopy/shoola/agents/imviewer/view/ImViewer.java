@@ -274,7 +274,7 @@ public interface ImViewer
 	 * @param userID   The id of the user who set the settings.
 	 * @throws IllegalStateException If the current state is {@link #DISCARDED}.  
 	 */
-	public void activate(RndProxyDef settings, long userID);
+	public void activate(RndProxyDef settings, long userID, int displayMode);
 
 	/**
 	 * Transitions the viewer to the {@link #DISCARDED} state.
@@ -1270,4 +1270,26 @@ public interface ImViewer
 	 */
 	SecurityContext getSecurityContext();
 
+	/**
+	 * Invokes when the channels have been modified. Updates the values
+	 * displayed in the measurement tool.
+	 * 
+	 * @param channels The channels to handle.
+	 */
+	void onUpdatedChannels(List<ChannelData> channels);
+
+	/** 
+	 * Returns the display mode. One of the constants defined by 
+	 * {@link LookupNames}.
+	 * 
+	 * @return See above.
+	 */
+	int getDisplayMode();
+	
+	/**
+	 * Returns the id of the pixels set this viewer is for.
+	 * 
+	 * @return See above.
+	 */
+	long getPixelsID();
 }

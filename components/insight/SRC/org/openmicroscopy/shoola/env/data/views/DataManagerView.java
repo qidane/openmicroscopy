@@ -39,8 +39,7 @@ import org.openmicroscopy.shoola.env.data.model.TimeRefObject;
 import org.openmicroscopy.shoola.env.data.model.TransferableObject;
 import org.openmicroscopy.shoola.env.data.util.SecurityContext;
 import org.openmicroscopy.shoola.env.event.AgentEventListener;
-import org.openmicroscopy.shoola.env.ui.DataObjectTransfer;
-
+import pojos.ChannelData;
 import pojos.DataObject;
 import pojos.ImageData;
 
@@ -67,31 +66,33 @@ public interface DataManagerView
 	 * 
 	 * @param ctx The security context.
 	 * @param rootNodeType  The type of the root node. Can only be one out of:
-	 *                      <code>ProjectData, DatasetData</code>.
+	 *                      <code>ProjectData</code>, <code>DatasetData</code>
+	 *                      or <code>ScreenData</code>.
 	 * @param rootNodeIDs   A set of the IDs of top-most containers. Passed
 	 *                      <code>null</code> to retrieve all the top-most
 	 *                      container specified by the rootNodeType.
 	 * @param withLeaves    Passes <code>true</code> to retrieve the images.
-	 *                      <code>false</code> otherwise.   
+	 *                      <code>false</code> otherwise.
 	 * @param userID		The identifier of the user.
-	 * @param groupID		The identifier of the user's group.
 	 * @param observer      Call-back handler.
 	 * @return A handle that can be used to cancel the call.
 	 */
 	public CallHandle loadContainerHierarchy(SecurityContext ctx,
 			Class rootNodeType, List<Long> rootNodeIDs, boolean withLeaves,
-			long userID, long groupID, AgentEventListener observer);
+			long userID, AgentEventListener observer);
 
 	/**
 	 * Retrieves the images for the specified user.
 	 * 
 	 * @param ctx The security context.
 	 * @param userID The ID of the user.
+	 * @param orphan Indicates to load all the images or only the images not
+	 * in any container.
 	 * @param observer Call-back handler.
 	 * @return A handle that can be used to cancel the call.
 	 */
 	public CallHandle loadImages(SecurityContext ctx, long userID,
-			AgentEventListener observer);
+			boolean orphan, AgentEventListener observer);
 
 	/**
 	 * Retrieves the images container in the specified root nodes.
@@ -319,10 +320,36 @@ public interface DataManagerView
 	 * Moves the passed collection to another group.
 	 * 
 	 * @param object The objects to transfer.
-	 * @param observer	Call-back handler.
+	 * @param observer Call-back handler.
 	 * @return A handle that can be used to cancel the call.
 	 */
 	public CallHandle changeGroup(TransferableObject object,
 			AgentEventListener observer);
+
+	/**
+	 * Checks if the image is a large image or not.
+	 * 
+	 * @param ctx The security context.
+	 * @param pixelsID The identifier of the pixels set.
+	 * @param observer Call-back handler.
+	 * @return A handle that can be used to cancel the call.
+	 */
+	public CallHandle isLargeImage(SecurityContext ctx, long pixelsID,
+			AgentEventListener observer);
+
+	/**
+	 * Saves the channels. Applies the changes to all the images contained in
+	 * the specified objects. This could be datasets, plates or images.
+	 * 
+	 * @param ctx The security context.
+	 * @param channels The channels to update.
+	 * @param objects The objects to apply the changes to. If the objects are
+	 * datasets, then all the images within the datasets will be updated.
+	 * @param observer Call-back handler.
+	 * @return A handle that can be used to cancel the call.
+	 */
+	public CallHandle saveChannelData(SecurityContext ctx,
+			List<ChannelData> channels, List<DataObject> objects,
+			AgentEventListener channelDataSaver);
 	
 }

@@ -37,11 +37,16 @@ from omero_ext.which import whichall
 from omero_version import ice_compatibility
 
 try:
+    import pywintypes
     import win32service
     import win32evtlogutil
+    import win32api
+    import win32security
     has_win32 = True
 except ImportError:
     has_win32 = False
+
+DEFAULT_WAIT = 300
 
 HELP="""Administrative tools including starting/stopping OMERO.
 
@@ -76,23 +81,25 @@ class AdminControl(BaseControl):
         self.actions = {}
 
         class Action(object):
-            def __init__(this, name, help):
+            def __init__(this, name, help, wait=False):
                 this.parser = sub.add_parser(name, help=help, description=help)
                 this.parser.set_defaults(func=getattr(self, name))
                 self.actions[name] = this.parser
+                if wait:
+                    this.parser.add_argument("--wait", type=float, default=DEFAULT_WAIT, help="Seconds to wait for operation")
 
         Action("start", """Start icegridnode daemon and waits for required components to come up, i.e. status == 0
 
              If the first argument can be found as a file, it will
              be deployed as the application descriptor rather than
              etc/grid/default.xml. All other arguments will be used
-             as targets to enable optional sections of the descriptor""")
+             as targets to enable optional sections of the descriptor""", wait=True)
 
         Action("startasync", """The same as start but returns immediately.""",)
 
-        Action("restart", """stop && start""",)
+        Action("restart", """stop && start""", wait=True)
 
-        Action("restartasync", """The same as restart but returns as soon as starting has begun.""",)
+        Action("restartasync", """The same as restart but returns as soon as starting has begun.""", wait=True)
 
         Action("status", """Status of server.
              Returns with 0 status if a node ping is successful
@@ -102,7 +109,7 @@ class AdminControl(BaseControl):
                  omero admin status && echo "server started"
             """)
 
-        Action("stop", """Initiates node shutdown and waits for status to return a non-0 value""")
+        Action("stop", """Initiates node shutdown and waits for status to return a non-0 value""", wait=True)
 
         Action("stopasync", """The same as stop but returns immediately.""")
 
@@ -116,9 +123,9 @@ class AdminControl(BaseControl):
 
         Action("diagnostics", """Run a set of checks on the current, preferably active server""")
 
-        Action("waitup", """Used by start after calling startasync to wait on status==0""")
+        Action("waitup", """Used by start after calling startasync to wait on status==0""", wait=True)
 
-        Action("waitdown", """Used by stop after calling stopasync to wait on status!=0""")
+        Action("waitdown", """Used by stop after calling stopasync to wait on status!=0""", wait=True)
 
         reindex = Action("reindex", """Re-index the Lucene index
 
@@ -127,7 +134,7 @@ Command-line tool for re-index the database. This command must be run on the mac
 
 Examples:
   bin/omero admin reindex --full                                                # All objects
-  bin/omero admin reindex --reindex ome.model.core.Image                        # Only images
+  bin/omero admin reindex --class ome.model.core.Image                          # Only images
   JAVA_OPTS="-Dlog4j.configuration=stderr.xml" bin/omero admin reindex --full   # Passing arguments to Java
 
 
@@ -162,7 +169,7 @@ Examples:
         ports.add_argument("--prefix", help = "Adds a prefix to each port ON TOP OF any other settings")
         ports.add_argument("--registry", help = "Registry port. (default: %(default)s)", default = "4061")
         ports.add_argument("--tcp", help = "The tcp port to be used by Glacier2 (default: %(default)s)", default = "4063")
-        ports.add_argument("--ssl", help = "The ssl port to be used by Glacier2 (default: %(default)s", default = "4064")
+        ports.add_argument("--ssl", help = "The ssl port to be used by Glacier2 (default: %(default)s)", default = "4064")
         ports.add_argument("--revert", action="store_true", help = "Used to rollback from the given settings to the defaults")
         ports.add_argument("--skipcheck", action="store_true", help = "Skips the check if the server is already running")
 
@@ -202,10 +209,10 @@ Examples:
             help="""If set, then only tests if the icegridnode is running""")
 
         for name in ("start", "startasync"):
-            self.actions[name].add_argument("-u","--user", help="""
-            User argument which should be logged in. If none is provided, the configuration
-            value for omero.windows.user will be taken. (Windows-only)
-            """)
+            self.actions[name].add_argument("-u","--user",
+                help="Service Log On As user name. If none given, the value of omero.windows.user will be used. (Windows-only)")
+            self.actions[name].add_argument("-w","--password",
+                help="Service Log On As user password. If none given, the value of omero.windows.pass will be used. (Windows-only)")
 
         for k in ("start", "startasync", "deploy", "restart", "restartasync"):
             self.actions[k].add_argument("file", nargs="?",
@@ -258,18 +265,7 @@ Examples:
             self.ctx.die(666, "Could not import win32service and/or win32evtlogutil")
 
         def _query_service(self, svc_name):
-            """
-            Query the service
-            Required to check the stdout since
-            rcode is not non-0
-            """
-            command = ["sc", "query", svc_name]
-            popen = self.ctx.popen(command) # popen
-            output = popen.communicate()[0]
-            if 0 <= output.find("1060"):
-                return "DOESNOTEXIST"
-            else:
-                return output
+            self.ctx.die(666, "Could not import win32service and/or win32evtlogutil")
 
     #
     # End Windows Methods
@@ -376,6 +372,7 @@ Examples:
         self.check([])
 
         user = args.user
+        pasw = args.password
         descript = self._descript(args)
 
         if self._isWindows():
@@ -384,34 +381,65 @@ Examples:
 
             # Now check if the server exists
             if 0 <= output.find("DOESNOTEXIST"):
-                command = [
-                   "sc", "create", svc_name,
-                   "binPath=","""icegridnode.exe "%s" --deploy "%s" --service %s""" % (self._icecfg(), descript, svc_name),
-                   "DisplayName=", svc_name,
-                   "start=","auto"]
+                binpath = """icegridnode.exe "%s" --deploy "%s" --service %s""" % (self._icecfg(), descript, svc_name)
 
-                # By default: "NT Authority\LocalService"
-                if user:
-                    user = self.ctx.input("User account:", False)
+                # By default: "NT Authority\Local System"
                 if not user:
-                    user = self.ctx.initData().properties.getProperty("omero.windows.user")
-                if len(user) > 0:
-                    command.append("obj=")
-                    command.append(user)
-                    self.ctx.out(self.ctx.popen(["ntrights","+r","SeServiceLogonRight","-u",user]).communicate()[0]) # popen
-                    pasw = self.ctx.initData().properties.getProperty("omero.windows.pass")
-                    pasw = self._ask_for_password(" for service user: %s" % user, pasw)
-                    command.append("password=")
-                    command.append(pasw)
-                self.ctx.out(self.ctx.popen(command).communicate()[0]) # popen
+                    try:
+                        user = config.as_map()["omero.windows.user"]
+                    except KeyError:
+                        user = None
+                if user is not None and len(user) > 0:
+                    if not "\\" in user:
+                        computername = win32api.GetComputerName()
+                        user = "\\".join([computername, user])
+                    try:
+                        # See #9967, code based on http://mail.python.org/pipermail/python-win32/2010-October/010791.html
+                        self.ctx.out("Granting SeServiceLogonRight to service user \"%s\"" % user)
+                        policy_handle = win32security.LsaOpenPolicy(None, win32security.POLICY_ALL_ACCESS)
+                        sid_obj, domain, tmp = win32security.LookupAccountName(None, user)
+                        win32security.LsaAddAccountRights(policy_handle, sid_obj, ('SeServiceLogonRight',))
+                        win32security.LsaClose(policy_handle)
+                    except pywintypes.error, details:
+                        self.ctx.die(200, "Error during service user set up: (%s) %s" % (details[0], details[2]))
+                    if not pasw:
+                        try:
+                            pasw = config.as_map()["omero.windows.pass"]
+                        except KeyError:
+                            pasw = self._ask_for_password(" for service user \"%s\"" % user)
+                else:
+                    pasw = None
+
+                hscm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_ALL_ACCESS)
+                try:
+                    self.ctx.out("Installing %s Windows service." % svc_name)
+                    hs = win32service.CreateService(hscm, svc_name, svc_name, win32service.SERVICE_ALL_ACCESS,
+                            win32service.SERVICE_WIN32_OWN_PROCESS, win32service.SERVICE_DEMAND_START,
+                            win32service.SERVICE_ERROR_NORMAL, binpath, None, 0, None, user, pasw)
+                    self.ctx.out("Successfully installed %s Windows service." % svc_name)
+                    win32service.CloseServiceHandle(hs)
+                finally:
+                    win32service.CloseServiceHandle(hscm)
 
             # Then check if the server is already running
             if 0 <= output.find("RUNNING"):
-                 self.ctx.die(201, "%s is already running. Use stop first" % svc_name)
+                self.ctx.die(201, "%s is already running. Use stop first" % svc_name)
 
-            # Finally start the service
-            output = self.ctx.popen(["sc","start",svc_name]).communicate()[0] # popen
-            self.ctx.out(output)
+            # Finally, try to start the service - delete if startup fails
+            hscm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_ALL_ACCESS)
+            try:
+                try:
+                    hs = win32service.OpenService(hscm, svc_name, win32service.SC_MANAGER_ALL_ACCESS)
+                    win32service.StartService(hs, None)
+                    self.ctx.out("Starting %s Windows service." % svc_name)
+                except pywintypes.error, details:
+                    self.ctx.out("%s service startup failed: (%s) %s" % (svc_name, details[0], details[2]))
+                    win32service.DeleteService(hs)
+                    self.ctx.die(202, "%s service deleted." % svc_name)
+            finally:
+                win32service.CloseServiceHandle(hs)
+                win32service.CloseServiceHandle(hscm)
+
         else:
             command = ["icegridnode","--daemon","--pidfile",str(self._pid()),"--nochdir",self._icecfg(),"--deploy",str(descript)] + args.targets
             self.ctx.rv = self.ctx.call(command)
@@ -502,16 +530,16 @@ Examples:
         """
         self.check_access(os.R_OK)
         self.ctx.out("Waiting on startup. Use CTRL-C to exit")
-        count = 30
+        count, loop_secs, time_msg = self.loops_and_wait(args)
         while True:
             count = count - 1
             if count == 0:
-                self.ctx.die(43, "\nFailed to startup some components after 5 minutes")
+                self.ctx.die(43, "\nFailed to startup some components after %s" % time_msg)
             elif 0 == self.status(args, node_only = False):
                 break
             else:
                 self.ctx.out(".", newline = False)
-                self.ctx.sleep(10)
+                self.ctx.sleep(loop_secs)
 
     def waitdown(self, args):
         """
@@ -519,19 +547,36 @@ Examples:
         """
         self.check_access(os.R_OK)
         self.ctx.out("Waiting on shutdown. Use CTRL-C to exit")
-        count = 30
+        count, loop_secs, time_msg = self.loops_and_wait(args)
         while True:
             count = count - 1
             if count == 0:
-                self.ctx.die(44, "\nFailed to shutdown some components after 5 minutes")
+                self.ctx.die(44, "\nFailed to shutdown some components after %s" % time_msg)
                 return False
             elif 0 != self.status(args, node_only = True):
                 break
             else:
                 self.ctx.out(".", newline = False)
-                self.ctx.sleep(10)
+                self.ctx.sleep(loop_secs)
         self.ctx.rv = 0
         return True
+
+    def loops_and_wait(self, args):
+        """
+        If present, get the wait time from the args argument
+        and calculate the number of loops and the wait time
+        needed. If not present in args, use a default value.
+        """
+
+        if not hasattr(args, "wait"):
+            # This might happen if a new command starts using
+            # waitup/waitdown without setting wait=True for
+            # Action()
+            args.wait = DEFAULT_WAIT
+
+        total_secs = args.wait
+        loop_secs = total_secs / 30.0
+        return 30, loop_secs, "%s seconds" % total_secs
 
     @with_config
     def stopasync(self, args, config):
@@ -547,8 +592,15 @@ Examples:
             output = self._query_service(svc_name)
             if 0 <= output.find("DOESNOTEXIST"):
                 self.ctx.die(203, "%s does not exist. Use 'start' first." % svc_name)
-            self.ctx.out(self.ctx.popen(["sc","stop",svc_name]).communicate()[0]) # popen
-            self.ctx.out(self.ctx.popen(["sc","delete",svc_name]).communicate()[0]) # popen
+            hscm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_ALL_ACCESS)
+            try:
+                hs = win32service.OpenService(hscm, svc_name, win32service.SC_MANAGER_ALL_ACCESS)
+                win32service.ControlService(hs, win32service.SERVICE_CONTROL_STOP)
+                win32service.DeleteService(hs)
+                self.ctx.out("%s service deleted." % svc_name)
+            finally:
+                win32service.CloseServiceHandle(hs)
+                win32service.CloseServiceHandle(hscm)
         else:
             command = self._cmd("-e","node shutdown %s" % self._node())
             try:
@@ -683,6 +735,23 @@ OMERO Diagnostics %s
         version(["psql",         "--version"])
 
 
+        def get_ports(input):
+            router_lines = [line for line in input.split("\n") if line.find("ROUTER") >= 0]
+
+            ssl_port = None
+            tcp_port = None
+            for line in router_lines:
+                if not ssl_port and line.find("ROUTERPORT") >= 0:
+                    m = re.match(".*?(\d+).*?$", line)
+                    if m:
+                        ssl_port = m.group(1)
+
+                if not tcp_port and line.find("INSECUREROUTER") >= 0:
+                    m = re.match("^.*?-p (\d+).*?$", line)
+                    if m:
+                        tcp_port = m.group(1)
+            return ssl_port, tcp_port
+
         self.ctx.out("")
         if not iga:
             self.ctx.out("No icegridadmin available: Cannot check server list")
@@ -710,6 +779,56 @@ OMERO Diagnostics %s
                         self.ctx.err(io2[1].strip())
                     elif io2[0]:
                         self.ctx.out(io2[0].strip())
+                    else:
+                        self.ctx.err("UNKNOWN!")
+            if self._isWindows():
+                # Print the OMERO server Windows service details
+                hscm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_ALL_ACCESS)
+                services = win32service.EnumServicesStatus(hscm)
+                omesvcs = tuple((sname, fname) for sname,fname,status in services if "OMERO" in fname)
+                for sname,fname in omesvcs:
+                    item("Server", fname)
+                    hsc = win32service.OpenService(hscm, sname, win32service.SC_MANAGER_ALL_ACCESS)
+                    logonuser = win32service.QueryServiceConfig(hsc)[7]
+                    if win32service.QueryServiceStatus(hsc)[1] == win32service.SERVICE_RUNNING:
+                        self.ctx.out("active (running as %s)" % logonuser)
+                    else:
+                        self.ctx.out("inactive")
+                    win32service.CloseServiceHandle(hsc)
+                win32service.CloseServiceHandle(hscm)
+
+            # List SSL & TCP ports of deployed applications
+            self.ctx.out("")
+            p = self.ctx.popen(self._cmd("-e", "application list")) # popen
+            rv = p.wait()
+            io = p.communicate()
+            if rv != 0:
+                self.ctx.out("Cannot list deployed applications.")
+                self.ctx.dbg("""
+                Stdout:\n%s
+                Stderr:\n%s
+                """ % io)
+            else:
+                applications = io[0].split()
+                applications.sort()
+                for s in applications:
+                    p2 = self.ctx.popen(self._cmd("-e", "application describe %s" % s)) # popen
+                    io2 = p2.communicate()
+                    if io2[1]:
+                        self.ctx.err(io2[1].strip())
+                    elif io2[0]:
+                        ssl_port, tcp_port = get_ports(io2[0])
+                        item("%s" % s, "SSL port")
+                        if not ssl_port:
+                            self.ctx.err("Not found")
+                        else:
+                            self.ctx.out("%s" % ssl_port)
+
+                        item("%s" % s, "TCP port")
+                        if not tcp_port:
+                            self.ctx.err("Not found")
+                        else:
+                            self.ctx.out("%s" % tcp_port)
                     else:
                         self.ctx.err("UNKNOWN!")
 
@@ -835,7 +954,7 @@ OMERO Diagnostics %s
 
         var = self.ctx.dir / 'var'
         if not os.path.exists(var):
-            print "Creating directory %s" % var
+            self.ctx.out("Creating directory %s" % var)
             os.makedirs(var, 0700)
         else:
             self.can_access(var, mask)
@@ -904,9 +1023,19 @@ OMERO Diagnostics %s
             cfg_tmp.rename(str(cfg_xml))
 
         try:
-            config = omero.config.ConfigXml(str(cfg_xml))
-            config.save()
+            try:
+                config = omero.config.ConfigXml(str(cfg_xml))
+            except Exception, e:
+                self.ctx.die(577, str(e))
+            if config.save_on_close:
+                config.save()
+            else:
+                self.ctx.err("%s read-only" % cfg_xml)
         except portalocker.LockException:
+            try:
+                config.close()
+            except:
+                pass
             self.ctx.die(111, "Could not acquire lock on %s" % cfg_xml)
 
         return config
@@ -921,6 +1050,7 @@ OMERO Diagnostics %s
         xargs = [ log4j, "-Xmx1024M", "-cp", os.pathsep.join(classpath) ]
 
         cfg = config.as_map()
+        config.close()  # Early close. See #9800
         for x in ("name", "user", "host", "port"): # NOT passing password on command-line
             k = "omero.db.%s" % x
             if k in cfg:

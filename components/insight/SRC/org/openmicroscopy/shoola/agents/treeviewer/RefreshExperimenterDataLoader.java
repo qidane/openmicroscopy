@@ -126,9 +126,9 @@ public class RefreshExperimenterDataLoader
     {
     	RefreshExperimenterDef node = expNodes.get(ctx);
     	Map<Object, Object> map;
-    	Map expandedNodes = node.getExpandedTopNodes();
-        if (expandedNodes == null || expandedNodes.size() == 0
-        	|| result instanceof Collection) {
+        if (result instanceof Map)
+        	map = (Map) result;
+        else {
         	Collection set = (Collection) result;
             Iterator j = set.iterator();
             map = new HashMap<Object, Object>();
@@ -165,7 +165,7 @@ public class RefreshExperimenterDataLoader
                     map.put(parent, children);
             	}
             }
-        } else map = (Map) result;
+        }
         node.setResults(map);
     }
     
@@ -213,7 +213,7 @@ public class RefreshExperimenterDataLoader
     {
         super(viewer, ctx);
         if (expNodes == null || expNodes.size() == 0)
-        	throw new IllegalArgumentException("Experimenter nodes not valid.");
+        	throw new IllegalArgumentException("Nodes not valid.");
         checkClass(rootNodeType);
         this.rootNodeType = rootNodeType;
         this.expNodes = expNodes;
@@ -229,8 +229,9 @@ public class RefreshExperimenterDataLoader
      */
     public void load()
     {
-    	Entry entry;
-    	Iterator i = expNodes.entrySet().iterator();
+    	Entry<SecurityContext, RefreshExperimenterDef> entry;
+    	Iterator<Entry<SecurityContext, RefreshExperimenterDef>> 
+    	i = expNodes.entrySet().iterator();
     	RefreshExperimenterDef def;
     	long userID;
     	TimeRefObject ref = null;
@@ -246,9 +247,8 @@ public class RefreshExperimenterDataLoader
     		TreeImageTimeSet time;
     		TreeFileSet file;
     		while (i.hasNext()) {
-    			entry = (Entry) i.next();
-    			ctx = (SecurityContext) entry.getKey();
-        		//userID = (Long) entry.getKey();
+    			entry = i.next();
+    			ctx = entry.getKey();
     			userID = ctx.getExperimenter();
         		def = (RefreshExperimenterDef) entry.getValue();
         		nodes = def.getExpandedNodes();
@@ -277,8 +277,8 @@ public class RefreshExperimenterDataLoader
     		Iterator k;
     		Object ob;
         	while (i.hasNext()) {
-        		entry = (Entry) i.next();
-        		ctx = (SecurityContext) entry.getKey();
+        		entry = i.next();
+        		ctx = entry.getKey();
         		userID = ctx.getExperimenter();
         		def = (RefreshExperimenterDef) entry.getValue();
         		if (GroupData.class.equals(rootNodeType)) {
@@ -305,7 +305,25 @@ public class RefreshExperimenterDataLoader
 							} else nl.add(ob);
 						}
         				m.put(ctx, nl);
-        			} else m.put(ctx, def.getExpandedNodes());
+        			} else {
+        				l  = def.getExpandedNodes();
+        				nl = new ArrayList<Object>();
+        				j = l.iterator();
+        				while (j.hasNext()) {
+							ob = (Object) j.next();
+							if (ob instanceof TreeFileSet) {
+								ref = new TimeRefObject(userID,
+										TimeRefObject.FILE);
+								ref.setFileType(TimeRefObject.FILE_IMAGE_TYPE);
+								nl.add(ref);
+								if (smartFolders == null) 
+									smartFolders = new 
+										HashMap<SecurityContext, TreeImageSet>();
+								smartFolders.put(ctx, (TreeImageSet) ob);
+							} else nl.add(ob);
+						}
+        				m.put(ctx, nl);
+        			}
         		}
     		}
     	}
@@ -359,10 +377,39 @@ public class RefreshExperimenterDataLoader
             	formatSmartFolderResult(ctx, (List) entry.getValue());
     		}
         } else {
+        	
         	while (i.hasNext()) {
         		entry = (Entry) i.next();
         		ctx = (SecurityContext) entry.getKey();
-            	setExperimenterResult(ctx, entry.getValue());
+        		Object o = entry.getValue();
+        		if (smartFolders != null && o instanceof Map) {
+        			//need to extract. 
+        			Map map = (Map) o;
+        			Iterator k = map.entrySet().iterator();
+        			Entry e;
+        			TreeImageSet display;
+        			Map newMap = new HashMap();
+        			Object key;
+        			while (k.hasNext()) {
+						e = (Entry) k.next();
+						key = e.getKey();
+						if (key instanceof TimeRefObject) {
+							if (smartFolders != null) {
+	                			display = smartFolders.get(ctx);
+	                			if (display != null) {
+	                				display.removeAllChildren();
+	                				display.removeAllChildrenDisplay();
+	                				newMap.put(display, 
+	                				((TimeRefObject) key).getResults());
+	                			}
+	                		}
+						} else newMap.put(key, e.getValue());
+					}
+        			setExperimenterResult(ctx, newMap);
+        		} else {
+        			setExperimenterResult(ctx, o);
+        		}
+            	
     		}
         }
         viewer.setRefreshExperimenterData(expNodes, type, id);

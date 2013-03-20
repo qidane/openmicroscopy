@@ -253,10 +253,12 @@ class BaseContainer(BaseController):
         
     def loadTags(self, eid=None):
         if eid is not None:
-            self.experimenter = self.conn.getObject("Experimenter", eid)
+            if eid == -1:       # Load data for all users
+                eid = None
+            else:
+                self.experimenter = self.conn.getObject("Experimenter", eid)
         else:            
             eid = self.conn.getEventContext().userId
-        
         self.tags = list(self.conn.listTags(eid))
         self.t_size = len(self.tags)
     
@@ -281,7 +283,10 @@ class BaseContainer(BaseController):
         
     def listImagesInDataset(self, did, eid=None, page=None, load_pixels=False):
         if eid is not None:
-            self.experimenter = self.conn.getObject("Experimenter", eid)  
+            if eid == -1:       # Load data for all users
+                eid = None
+            else:
+                self.experimenter = self.conn.getObject("Experimenter", eid)
         im_list = list(self.conn.listImagesInDataset(oid=did, eid=eid, page=page, load_pixels=load_pixels))
         im_list.sort(key=lambda x: x.getName().lower())
         self.containers = {'images': im_list}
@@ -292,10 +297,12 @@ class BaseContainer(BaseController):
     
     def listContainerHierarchy(self, eid=None):
         if eid is not None:
-            self.experimenter = self.conn.getObject("Experimenter", eid)
+            if eid == -1:
+                eid = None
+            else:
+                self.experimenter = self.conn.getObject("Experimenter", eid)
         else:
             eid = self.conn.getEventContext().userId
-        
         pr_list = list(self.conn.listProjects(eid))
         ds_list = list(self.conn.listOrphans("Dataset", eid))
         sc_list = list(self.conn.listScreens(eid))
@@ -313,7 +320,10 @@ class BaseContainer(BaseController):
     
     def listOrphanedImages(self, eid=None, page=None):
         if eid is not None:
-            self.experimenter = self.conn.getObject("Experimenter", eid)
+            if eid == -1:
+                eid = None
+            else:
+                self.experimenter = self.conn.getObject("Experimenter", eid)
         else:
             eid = self.conn.getEventContext().userId
         
@@ -483,7 +493,7 @@ class BaseContainer(BaseController):
         return batchAnns
 
 
-    def getTagsByObject(self):
+    def getTagsByObject(self, parent_type=None, parent_ids=None):
         eid = (not self.canUseOthersAnns()) and self.conn.getEventContext().userId or None
         
         def sort_tags(tag_gen):
@@ -507,6 +517,11 @@ class BaseContainer(BaseController):
             return sort_tags(self.screen.listOrphanedAnnotations(eid=eid, anntype='Tag'))
         elif self.acquisition is not None:
             return sort_tags(self.acquisition.listOrphanedAnnotations(eid=eid, anntype='Tag'))
+        elif parent_type and parent_ids:
+            parent_type = parent_type.title()
+            if parent_type == "Acquisition":
+                parent_type = "PlateAcquisition"
+            return sort_tags(self.conn.listOrphanedAnnotations(parent_type, parent_ids, eid=eid, anntype='Tag'))
         else:
             if eid is not None:
                 params = omero.sys.Parameters()
@@ -515,7 +530,7 @@ class BaseContainer(BaseController):
                 return sort_tags(self.conn.getObjects("TagAnnotation", params=params))
             return sort_tags(self.conn.getObjects("TagAnnotation"))
     
-    def getFilesByObject(self):
+    def getFilesByObject(self, parent_type=None, parent_ids=None):
         eid = (not self.canUseOthersAnns()) and self.conn.getEventContext().userId or None
         ns = [omero.constants.namespaces.NSCOMPANIONFILE, omero.constants.namespaces.NSEXPERIMENTERPHOTO]
         
@@ -540,6 +555,11 @@ class BaseContainer(BaseController):
             return sort_file_anns(self.screen.listOrphanedAnnotations(eid=eid, ns=ns, anntype='File'))
         elif self.acquisition is not None:
             return sort_file_anns(self.acquisition.listOrphanedAnnotations(eid=eid, ns=ns, anntype='File'))
+        elif parent_type and parent_ids:
+            parent_type = parent_type.title()
+            if parent_type == "Acquisition":
+                parent_type = "PlateAcquisition"
+            return sort_file_anns(self.conn.listOrphanedAnnotations(parent_type, parent_ids, eid=eid, ns=ns, anntype='File'))
         else:
             return sort_file_anns(self.conn.listFileAnnotations(eid=eid))
     ####################################################################
@@ -936,20 +956,17 @@ class BaseContainer(BaseController):
                 if parent[0] != destination[0]:
                     up_spl = None
                     spls = list(self.plate.getParentLinks()) #gets every links for child
-                    if len(spls) == 1:
-                        # gets old parent to delete
-                        if spls[0].parent.id.val == long(parent[1]):
-                            up_spl = spls[0]
-                            self.conn.deleteObjectDirect(up_spl._obj)
-                    else:
-                        return 'This plate is linked in multiple places. Please unlink the plate first.'
+                    for spl in spls:
+                        if spl.parent.id.val == long(parent[1]):
+                            self.conn.deleteObjectDirect(spl._obj)
+                            break
             else:
                 return 'Destination not supported.'
         else:
             return 'No data was choosen.'
         return 
     
-    def remove( self, parents ):
+    def remove( self, parents, index):
         """
         Removes the current object (file, tag, comment, dataset, plate, image) from it's parents by
         manually deleting the link.
@@ -963,6 +980,10 @@ class BaseContainer(BaseController):
             parentId = long(parent[1])
             if dtype == "acquisition":
                 dtype = "PlateAcquisition"
+            if dtype == "well":
+                dtype = "Image"
+                w = self.conn.getObject("Well", parentId)
+                parentId = w.getWellSample(index=index).image().getId()
             if self.tag:
                 for al in self.tag.getParentLinks(dtype, [parentId]):
                     if al is not None and al.canDelete():

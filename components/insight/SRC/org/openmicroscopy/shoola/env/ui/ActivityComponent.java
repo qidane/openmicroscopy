@@ -70,7 +70,6 @@ import org.openmicroscopy.shoola.env.event.EventBus;
 import org.openmicroscopy.shoola.util.filter.file.CSVFilter;
 import org.openmicroscopy.shoola.util.ui.UIUtilities;
 import org.openmicroscopy.shoola.util.ui.filechooser.FileChooser;
-
 import pojos.FileAnnotationData;
 
 /**
@@ -589,7 +588,6 @@ public abstract class ActivityComponent
 				index = DownloadActivityParam.FILE_ANNOTATION;
 				if (text.length() == 0) text = "Annotation";
 				name = text+"_"+dataID;
-			
 			}
 		} else {
 			of = (OriginalFile) object;
@@ -609,7 +607,6 @@ public abstract class ActivityComponent
 			if (original == null && type == -1) return;
 			DownloadActivityParam activity;
 			IconManager icons = IconManager.getInstance(registry);
-			File f = new File(folder.getAbsolutePath(), name);
 			if (original != null) {
 				activity = new DownloadActivityParam(original,
 						folder, icons.getIcon(IconManager.DOWNLOAD_22));

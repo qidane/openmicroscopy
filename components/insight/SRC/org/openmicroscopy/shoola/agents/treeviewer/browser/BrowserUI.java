@@ -135,7 +135,7 @@ class BrowserUI
     	TreeFileSet.EXPERIMENT, TreeFileSet.MOVIE, TreeFileSet.OTHER};
     
     /** The tree hosting the display. */
-    private JTree           		treeDisplay;
+    private DnDTree           treeDisplay;
     
     /** The tool bar hosting the controls. */
     private JToolBar				rightMenuBar;
@@ -182,8 +182,11 @@ class BrowserUI
     /* The time when the latest tree selection event was handled. */
     private long eventHandledTime = Long.MIN_VALUE;
     
+    /* The time when the latest mouse press event occurred. */
+    private long mousePressedTime;
+    
     /* If a mouse event delayed handling tree selection, because
-     * a corresponding tree selection event has not yet been seen. */
+     * a corresponding tree selection event had not yet been seen. */
     private boolean delayedHandlingTreeSelection = false;
     
     /** Flag indicating if it is a right-click.*/
@@ -220,7 +223,6 @@ class BrowserUI
     	return bar;
     }
     
-
     /** Builds and lays out the UI. */
     private void buildGUI()
     {
@@ -355,7 +357,7 @@ class BrowserUI
         if (row != -1) {
             if (me.getClickCount() == 1) {
                 model.setClickPoint(p);
-                if (me.getWhen() > eventHandledTime)
+                if (mousePressedTime > eventHandledTime)
                 	/* have not yet seen the tree selection event */
                 	delayedHandlingTreeSelection = true;
                 else
@@ -410,7 +412,7 @@ class BrowserUI
     }
     
     /**
-     * Handles the mouse moved event. Displays the properties fo the
+     * Handles the mouse moved event. Displays the properties of the
      * the nodes the mouse is over.
      * 
      * @param e	The mouse event to handle.
@@ -462,6 +464,27 @@ class BrowserUI
     }
     
     /**
+     * Creates the elements to attach the specified group node.
+     * 
+     * @param node The node to attach the elements to.
+     * @return See above.
+     */
+    private TreeImageSet createGroupNode(TreeImageSet node)
+    {
+    	switch (model.getBrowserType()) {
+			case Browser.IMAGES_EXPLORER:
+				createTimeElements(node);
+				break;
+			case Browser.FILES_EXPLORER:
+				createFileElements(node);
+				break;
+			default:
+				buildEmptyNode(node);
+		}
+    	return node;
+    }
+    
+    /**
      * Creates the smart folders added to the passed node.
      * 
      * @param parent The parent of the smart folder.
@@ -509,6 +532,7 @@ class BrowserUI
      */
     private void createTagsElements(TreeImageDisplay parent)
     {
+    	if (model.getDisplayMode() == TreeViewer.GROUP_DISPLAY) return;
     	DefaultTreeModel tm = (DefaultTreeModel) treeDisplay.getModel();
     	TreeFileSet node = new TreeFileSet(TreeFileSet.TAG);
     	buildEmptyNode(node);
@@ -819,28 +843,53 @@ class BrowserUI
 	{
 		TreeImageDisplay root = getTreeRoot();
 		TreeImageDisplay node = null;
-    	if (model.isSingleGroup()) {
-    		node = root;
-    		node = createExperimenterNode(exp, node);
-    	} else {
-    		if (TreeViewerAgent.isMultiGroups()) {
-    			GroupData group = model.getSelectedGroup();
-    			List<TreeImageSet> nodes = createGroups(group);
-    			Iterator<TreeImageSet> i = nodes.iterator();
-    			TreeImageSet n;
-    			GroupData g;
-    			while (i.hasNext()) {
-					n = i.next();
-					g = (GroupData) n.getUserObject();
-					n = createExperimenterNode(exp, n);
-					if (g.getId() == group.getId())
-						node = n;
-				}
-    		} else {
-    			node = createGroup(model.getSelectedGroup());
-    			node = createExperimenterNode(exp, node);
-    		}
-    	}
+		switch (model.getDisplayMode()) {
+			case TreeViewer.GROUP_DISPLAY:
+				if (TreeViewerAgent.isMultiGroups()) {
+	    			GroupData group = model.getSelectedGroup();
+	    			List<TreeImageSet> nodes = createGroups(group);
+	    			Iterator<TreeImageSet> i = nodes.iterator();
+	    			TreeImageSet n;
+	    			GroupData g;
+	    			while (i.hasNext()) {
+						n = i.next();
+						g = (GroupData) n.getUserObject();
+						n = createGroupNode((TreeImageSet) n);
+						if (g.getId() == group.getId())
+							node = n;
+					}
+	    		} else {
+	    			node = createGroup(model.getSelectedGroup());
+	    			node = createGroupNode((TreeImageSet) node);
+	    		}
+				break;
+			case TreeViewer.EXPERIMENTER_DISPLAY:
+			default:
+				if (model.isSingleGroup()) {
+		    		node = root;
+		    		node = createExperimenterNode(exp, node);
+		    	} else {
+		    		if (TreeViewerAgent.isMultiGroups()) {
+		    			GroupData group = model.getSelectedGroup();
+		    			List<TreeImageSet> nodes = createGroups(group);
+		    			Iterator<TreeImageSet> i = nodes.iterator();
+		    			TreeImageSet n;
+		    			GroupData g;
+		    			while (i.hasNext()) {
+							n = i.next();
+							g = (GroupData) n.getUserObject();
+							n = createExperimenterNode(exp, n);
+							if (g.getId() == group.getId())
+								node = n;
+						}
+		    		} else {
+		    			node = createGroup(model.getSelectedGroup());
+		    			node = createExperimenterNode(exp, node);
+		    		}
+		    	}
+				break;
+		}
+    	
     	return node;
 	}
 
@@ -916,7 +965,7 @@ class BrowserUI
         treeDisplay.setVisible(true);
         treeDisplay.setRootVisible(false);
         ToolTipManager.sharedInstance().registerComponent(treeDisplay);
-        treeDisplay.setCellRenderer(new TreeCellRenderer());
+        treeDisplay.setCellRenderer(new TreeCellRenderer(model.getUserID()));
         treeDisplay.setShowsRootHandles(true);
         TreeImageSet root = new TreeImageSet("");
         treeDisplay.setModel(new DefaultTreeModel(root));
@@ -929,9 +978,10 @@ class BrowserUI
         //treeDisplay.requestFocus();
         treeDisplay.addMouseListener(new MouseAdapter() {
            public void mousePressed(MouseEvent e)
-           { 
-        	   rightClickPad = UIUtilities.isMacOS() && 
-				SwingUtilities.isLeftMouseButton(e) && e.isControlDown();
+           {
+        	   mousePressedTime = e.getWhen();
+        	   rightClickPad = UIUtilities.isMacOS() &&
+        	           SwingUtilities.isLeftMouseButton(e) && e.isControlDown();
         	   rightClickButton = SwingUtilities.isRightMouseButton(e);
         	   ctrl = e.isControlDown();
         	   if (UIUtilities.isMacOS()) ctrl = e.isMetaDown();
@@ -1154,6 +1204,21 @@ class BrowserUI
         DefaultTreeModel tm = (DefaultTreeModel) treeDisplay.getModel();
         tm.insertNodeInto(new DefaultMutableTreeNode(EMPTY_MSG), node,
                             node.getChildCount());
+    }
+    
+    /**
+     * Creates the smart folders added to the passed node.
+     * 
+     * @param parent The parent of the smart folder.
+     */
+    private void buildOrphanImagesNode(TreeImageDisplay parent)
+    {
+    	DefaultTreeModel tm = (DefaultTreeModel) treeDisplay.getModel();
+    	TreeFileSet node = new TreeFileSet(TreeFileSet.ORPHANED_IMAGES);
+    	buildEmptyNode(node);
+		node.setNumberItems(-1);
+		parent.addChildDisplay(node);
+		tm.insertNodeInto(node, parent, parent.getChildCount());
     }
 
     /**
@@ -1759,16 +1824,21 @@ class BrowserUI
         dtm.reload();
         Iterator i;
         if (nodes.size() > 0) {
+        	boolean createFolder = true;
             i = nodes.iterator();
             TreeImageDisplay node;
             TreeFileSet n = null;
-            Set toKeep = new HashSet();
+            Set<TreeImageDisplay> toKeep = new HashSet<TreeImageDisplay>();
+            int type;
             while (i.hasNext()) {
             	node = (TreeImageDisplay) i.next();
             	if (node instanceof TreeFileSet) {
-            		if (((TreeFileSet) node).getType() == TreeFileSet.TAG) {
+            		type = ((TreeFileSet) node).getType();
+            		if (type == TreeFileSet.TAG || 
+            			type == TreeFileSet.ORPHANED_IMAGES) {
             			List l = node.getChildrenDisplay();
                 		if (l.size() > 0) {
+                			createFolder = false;
                 			n = (TreeFileSet) node.copy();
                 			n.setExpanded(Boolean.valueOf(true));
                 			n.setChildrenLoaded(Boolean.valueOf(true));
@@ -1787,15 +1857,30 @@ class BrowserUI
             if (n != null) sorted.add(n);
             buildTreeNode(expNode, sorted,
             		(DefaultTreeModel) treeDisplay.getModel());
-            if (model.getBrowserType() == Browser.TAGS_EXPLORER && n == null) {
-            	createTagsElements(expNode);
-            }	
+            if (createFolder) {
+            	switch (model.getBrowserType()) {
+					case Browser.TAGS_EXPLORER:
+						if (n == null)
+							createTagsElements(expNode);
+						break;
+					case Browser.PROJECTS_EXPLORER:
+						buildOrphanImagesNode(expNode);
+            	}
+            }
         } else {
         	expNode.setExpanded(false);
-        	if (model.getBrowserType() == Browser.TAGS_EXPLORER)
-        		createTagsElements(expNode);
-        	else buildEmptyNode(expNode);
-        }
+        	switch (model.getBrowserType()) {
+				case Browser.TAGS_EXPLORER:
+					createTagsElements(expNode);
+					break;
+				case Browser.PROJECTS_EXPLORER:
+					buildOrphanImagesNode(expNode);
+					break;
+				default:
+					buildEmptyNode(expNode);
+        	}
+		}
+        //
         i = nodesToReset.iterator();
         while (i.hasNext()) 
 			setExpandedParent((TreeImageDisplay) i.next(), true);
@@ -1813,8 +1898,7 @@ class BrowserUI
 					i = children.iterator();
 					while (i.hasNext()) {
 						child = (TreeImageDisplay) i.next();
-						if (child.getUserObject() instanceof ExperimenterData
-								&& child.isExpanded())
+						if (child.isExpanded())
 							expandNode(child);
 					}
 				}
@@ -2127,11 +2211,14 @@ class BrowserUI
 	/** Reactivates the tree. */
 	void reActivate()
 	{
-		TreeImageDisplay root = getTreeRoot();
-		root.removeAllChildren();
-		root.removeAllChildrenDisplay();
+		clear();
+		treeDisplay.reset(model.getUserID(),
+	       		TreeViewerAgent.isAdministrator());
+		TreeCellRenderer renderer = (TreeCellRenderer)
+		treeDisplay.getCellRenderer();
+		renderer.reset(model.getUserID());
 		if (model.getBrowserType() != Browser.ADMIN_EXPLORER) {
-			ExperimenterData exp = TreeViewerAgent.getUserDetails();
+			ExperimenterData exp = model.getUserDetails();
 			TreeImageDisplay node = buildTreeNodes(exp);
 			if (model.isSelected() && node != null) {
 				expandNode(node, true);
@@ -2141,6 +2228,16 @@ class BrowserUI
 		tm.reload();
 	}
 
+	/** Clear the tree.*/
+	void clear()
+	{
+		TreeImageDisplay root = getTreeRoot();
+		root.removeAllChildren();
+		root.removeAllChildrenDisplay();
+		DefaultTreeModel tm = (DefaultTreeModel) treeDisplay.getModel();
+		tm.reload();
+	}
+	
 	/**
 	 * Sets the nodes selecting via other views.
 	 * 
@@ -2272,23 +2369,23 @@ class BrowserUI
     }
 
     /**
-	 * Adds the specified group to the tree.
+	 * Adds the specified groups to the tree.
 	 * 
 	 * @param group The group to add.
 	 */
-	void setUserGroup(GroupData group)
+	void setUserGroup(List<GroupData> groups)
 	{
-		if (group == null) return;
+		if (groups == null || groups.size() == 0) return;
 		ExperimenterData exp = model.getUserDetails();
 		TreeImageSet node;
-		int count = getTreeRoot().getChildCount();
-		node = createGroup(group);
-		node = createExperimenterNode(exp, node);
-    	//if (model.isSelected()) expandNode(node, true);
-		if (count == 0) {
-			DefaultTreeModel dtm = (DefaultTreeModel) treeDisplay.getModel();
-			dtm.reload();
+		Iterator<GroupData> i = groups.iterator();
+		while (i.hasNext()) {
+			node = createGroup(i.next());
+			node = createExperimenterNode(exp, node);
+			
 		}
+		DefaultTreeModel dtm = (DefaultTreeModel) treeDisplay.getModel();
+		dtm.reload();
     	
 	}
 	

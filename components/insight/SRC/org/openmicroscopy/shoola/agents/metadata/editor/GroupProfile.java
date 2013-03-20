@@ -319,24 +319,21 @@ class GroupProfile
 
 	/**
 	 * Removes all components.
-	 * @see AnnotationUI#clearData()
+	 * @see AnnotationUI#clearData(Object)
 	 */
-	protected void clearData()
-	{
-		clearDisplay();
-	}
-
-	/**
-	 * Removes all components.
-	 * @see AnnotationUI#clearDisplay()
-	 */
-	protected void clearDisplay()
+	protected void clearData(Object oldObject)
 	{
 		if (namePane != null) namePane.setText("");
 		if (descriptionPane != null) descriptionPane.setText("");
 		revalidate();
 		repaint();
 	}
+
+	/**
+	 * Removes all components.
+	 * @see AnnotationUI#clearDisplay()
+	 */
+	protected void clearDisplay() {}
 	
 	/**
 	 * No-operation implementation in our case.
@@ -373,6 +370,10 @@ class GroupProfile
 		if (namePane == null) return false;
 		String v = namePane.getText();
 		v = v.trim();
+		if (v.length() == 0) {
+			saveButton.setEnabled(false);
+			return false;
+		}
 		if (!ref.getName().equals(v)) {
 			if (saveButton != null) saveButton.setEnabled(true);
 			return true;

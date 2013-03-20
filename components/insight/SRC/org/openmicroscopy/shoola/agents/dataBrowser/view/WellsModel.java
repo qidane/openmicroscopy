@@ -56,6 +56,7 @@ import org.openmicroscopy.shoola.agents.dataBrowser.browser.Thumbnail;
 import org.openmicroscopy.shoola.agents.dataBrowser.browser.WellImageSet;
 import org.openmicroscopy.shoola.agents.dataBrowser.browser.WellSampleNode;
 import org.openmicroscopy.shoola.agents.dataBrowser.layout.LayoutFactory;
+import org.openmicroscopy.shoola.agents.dataBrowser.visitor.DecoratorVisitor;
 import org.openmicroscopy.shoola.env.data.model.TableResult;
 import org.openmicroscopy.shoola.env.data.util.SecurityContext;
 import org.openmicroscopy.shoola.util.image.geom.Factory;
@@ -95,7 +96,7 @@ class WellsModel
 	private Dimension 			wellDimension;
 	
 	/** The collection of nodes hosting the wells. */
-	private List				wellNodes;
+	private List<ImageDisplay> wellNodes;
 	
 	/** The collection of nodes used to display cells e.g. A-1. */
 	private Set<CellDisplay> 	cells;
@@ -127,13 +128,13 @@ class WellsModel
 	 * @param nodes The nodes to sort.
 	 * @return See above.
 	 */
-	private List sortByRow(Set nodes)
+	private List<ImageDisplay> sortByRow(Set nodes)
 	{
-		List l = new ArrayList();
+		List<ImageDisplay> l = new ArrayList<ImageDisplay>();
 		if (nodes == null) return l;
 		Iterator i = nodes.iterator();
 		while (i.hasNext()) {
-			l.add(i.next());
+			l.add((ImageDisplay) i.next());
 		}
 		Comparator c = new Comparator() {
             public int compare(Object o1, Object o2)
@@ -240,13 +241,12 @@ class WellsModel
 			boolean withThumbnails)
 	{
 		super(ctx);
-		if (wells  == null) 
+		if (wells == null)
 			throw new IllegalArgumentException("No wells.");
 		this.withThumbnails = withThumbnails;
 		wellDimension = null;
 		this.parent = parent;
-		wellNodes = sortByRow(DataBrowserTranslator.transformHierarchy(wells, 
-				DataBrowserAgent.getUserDetails().getId(), 0));
+		wellNodes = sortByRow(DataBrowserTranslator.transformHierarchy(wells));
 
 		PlateData plate = (PlateData) parent;
 		columnSequenceIndex = plate.getColumnSequenceIndex();
@@ -258,7 +258,7 @@ class WellsModel
         rows = -1;
         columns = -1;
         int row, column;
-		Iterator j = wellNodes.iterator();
+		Iterator<ImageDisplay> j = wellNodes.iterator();
 		WellImageSet node;
 		ImageNode selected;
 		int f;
@@ -272,12 +272,9 @@ class WellsModel
 		Color color;
 		boolean b;
 		validWells = new ArrayList<WellGridElement>();
-		boolean titleRow, titleColumn;
 		int minRow = -1;
 		int minColumn = -1;
 		while (j.hasNext()) {
-			titleRow = false;
-			titleColumn = false;
 			node = (WellImageSet) j.next();
 			row = node.getRow();
 			column = node.getColumn();
@@ -311,14 +308,12 @@ class WellsModel
 			if (row > rows) rows = row;
 			if (column > columns) columns = column;
 			
-			if (minRow < 0 || minRow == row) {
+			if (minRow < 0 || minRow > row) {
 				minRow = row;
-				titleRow = true;
 			}
 			
-			if (minColumn < 0 || minColumn == column) {
+			if (minColumn < 0 || minColumn > column) {
 				minColumn = column;
-				titleColumn = true;
 			}
 			columnSequence = "";
 			if (columnSequenceIndex == PlateData.ASCENDING_LETTER)
@@ -335,8 +330,8 @@ class WellsModel
 			if (fieldsNumber < f) fieldsNumber = f;
 			node.setSelectedWellSample(selectedField);
 			selected = node.getSelectedWellSample();
-			if (titleColumn || titleRow)
-				node.formatWellSampleTitle();
+			//set the title to Row/Column
+			node.formatWellSampleTitle();
 			samples.add(selected);
 			b = false;
 			if (((DataObject) selected.getHierarchyObject()).getId() >= 0) {
@@ -346,12 +341,16 @@ class WellsModel
 			validWells.add(new WellGridElement(row, column, b));
 		}
 		//
-		if (minRow > 0 || minColumn > 0) {
+		if (minRow >= 0 || minColumn >= 0) {
 			j = wellNodes.iterator();
 			while (j.hasNext()) {
 				node = (WellImageSet) j.next();
-				node.setIndentRow(minRow);
-				node.setIndentColumn(minColumn);
+				if (minRow > 0)
+				    node.setIndentRow(minRow);
+				if (minColumn > 0)
+				    node.setIndentColumn(minColumn);
+				if (node.getRow() == minRow || node.getColumn() == minColumn)
+				    node.formatWellSampleTitle();
 			}
 		}
 		
@@ -392,6 +391,8 @@ class WellsModel
 			//cells.add(cell);
 		}
 		browser = BrowserFactory.createBrowser(samples);
+        browser.accept(new DecoratorVisitor(getCurrentUser().getId()));
+        
 		layoutBrowser(LayoutFactory.PLATE_LAYOUT);
 		if (wellDimension == null)
 			wellDimension = new Dimension(ThumbnailProvider.THUMB_MAX_WIDTH,
@@ -471,16 +472,16 @@ class WellsModel
 		if (index < 0 || index >= fieldsNumber) return;
 		selectedField = index;
 		Set<ImageDisplay> samples = new HashSet<ImageDisplay>();
-		List l = getNodes();
-		Iterator i = l.iterator();
+		List<ImageDisplay> l = getNodes();
+		Iterator<ImageDisplay> i = l.iterator();
 		WellImageSet well;
 		int row = -1;
 		int col = -1;
-		Collection c = browser.getSelectedDisplays(); 
+		Collection<ImageDisplay> c = browser.getSelectedDisplays();
 		Map<Integer, Integer> location = new HashMap<Integer, Integer>();
 		WellSampleNode selected;
 		if (c != null && c.size() > 0) {
-			Iterator j = c.iterator();
+			Iterator<ImageDisplay> j = c.iterator();
 			Object object;
 			while (j.hasNext()) {
 				object = j.next();
@@ -545,8 +546,8 @@ class WellsModel
 	{
 		if (cell == null) return;
 		List<DataObject> results = new ArrayList<DataObject >();
-		List l = getNodes();
-		Iterator i = l.iterator();
+		List<ImageDisplay> l = getNodes();
+		Iterator<ImageDisplay> i = l.iterator();
 		WellImageSet well;
 		int index = cell.getIndex();
 		if (cell.getType() == CellDisplay.TYPE_HORIZONTAL) {
@@ -618,8 +619,8 @@ class WellsModel
 	 */
 	WellImageSet getWell(int row, int column)
 	{
-		List l = getNodes();
-		Iterator i = l.iterator();
+		List<ImageDisplay> l = getNodes();
+		Iterator<ImageDisplay> i = l.iterator();
 		WellImageSet well;
 		while (i.hasNext()) {
 			well = (WellImageSet) i.next();
@@ -638,11 +639,10 @@ class WellsModel
 	 */
 	DataBrowserLoader createFieldsLoader(int row, int column)
 	{
-		List l = getNodes();
-		Iterator i = l.iterator();
+		List<ImageDisplay> l = getNodes();
+		Iterator<ImageDisplay> i = l.iterator();
 		ImageSet node;
 		List<DataObject> images = new ArrayList<DataObject>();
-		ImageNode selected;
 		WellSampleData data;
 		Thumbnail thumb;
 		WellImageSet wis;
@@ -686,8 +686,8 @@ class WellsModel
 			Collection ids)
 	{
 		if (!withThumbnails) return null;
-		List l = getNodes();
-		Iterator i = l.iterator();
+		List<ImageDisplay> l = getNodes();
+		Iterator<ImageDisplay> i = l.iterator();
 		ImageSet node;
 		List<DataObject> images = new ArrayList<DataObject>();
 		ImageNode selected;

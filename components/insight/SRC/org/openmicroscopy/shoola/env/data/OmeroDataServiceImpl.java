@@ -195,21 +195,16 @@ class OmeroDataServiceImpl
 
 	/** 
 	 * Implemented as specified by {@link OmeroDataService}. 
-	 * @see OmeroDataService#loadContainerHierarchy(SecurityContext, Class, List, boolean, long,
-	 * long)
+	 * @see OmeroDataService#loadContainerHierarchy(SecurityContext, Class, List, boolean, long)
 	 */
 	public Set loadContainerHierarchy(SecurityContext ctx,
 			Class rootNodeType, List rootNodeIDs, boolean withLeaves,
-			long userID, long groupID)
+			long userID)
 		throws DSOutOfServiceException, DSAccessException 
 	{
 		ParametersI param = new ParametersI();
 		if (rootNodeIDs == null) {
-			ExperimenterData exp = 
-				(ExperimenterData) context.lookup(
-						LookupNames.CURRENT_USER_DETAILS);
-			if (userID < 0) userID = exp.getId();
-			param.exp(omero.rtypes.rlong(userID));
+			if (userID >= 0) param.exp(omero.rtypes.rlong(userID));
 		}
 		if (withLeaves) param.leaves();
 		else param.noLeaves();
@@ -266,14 +261,14 @@ class OmeroDataServiceImpl
 
 	/** 
 	 * Implemented as specified by {@link OmeroDataService}.
-	 * @see OmeroDataService#getExperimenterImages(SecurityContext, long)
+	 * @see OmeroDataService#getExperimenterImages(SecurityContext, long, 
+	 * boolean)
 	 */
-	public Set getExperimenterImages(SecurityContext ctx, long userID)
+	public Set getExperimenterImages(SecurityContext ctx, long userID, boolean
+			orphan)
 		throws DSOutOfServiceException, DSAccessException
 	{
-		ParametersI po = new ParametersI();
-		po.exp(omero.rtypes.rlong(userID));
-		return gateway.getUserImages(ctx, po);
+		return gateway.getUserImages(ctx, userID, orphan);
 	}
 
 	/**
@@ -492,50 +487,16 @@ class OmeroDataServiceImpl
 
 	/**
 	 * Implemented as specified by {@link OmeroDataService}.
-	 * @see OmeroDataService#getChannelsMetadata(SecurityContext, long)
-	 */
-	public List getChannelsMetadata(SecurityContext ctx, long pixelsID)
-		throws DSOutOfServiceException, DSAccessException
-	{
-		Pixels pixels = gateway.getPixels(ctx, pixelsID);
-		if (pixels == null) return new ArrayList<ChannelData>();
-		Collection l = pixels.copyChannels();
-		if (l == null) return new ArrayList<ChannelData>();
-		Iterator i = l.iterator();
-		List<ChannelData> m = new ArrayList<ChannelData>(l.size());
-		int index = 0;
-		while (i.hasNext()) {
-			m.add(new ChannelData(index, (Channel) i.next()));
-			index++;
-		}
-		return m;
-	}
-
-	/**
-	 * Implemented as specified by {@link OmeroDataService}.
 	 * @see OmeroDataService#getArchivedFiles(SecurityContext, String, long)
 	 */
 	public Map<Boolean, Object> getArchivedImage(SecurityContext ctx,
-			String folderPath, long pixelsID) 
+			String folderPath, long imageID) 
 		throws DSOutOfServiceException, DSAccessException
 	{
 		context.getLogger().debug(this, folderPath);
 		//Check the image is archived.
-		Pixels pixels = gateway.getPixels(ctx, pixelsID);
-		long imageID = pixels.getImage().getId().getValue();
 		ImageData image = gateway.getImage(ctx, imageID, null);
-		String name = UIUtilities.removeFileExtension(
-				image.getName())+"."+OMETIFFFilter.OME_TIF;
-		Map<Boolean, Object> result = 
-			gateway.getArchivedFiles(ctx, folderPath, pixelsID);
-		if (result != null) return result;
-		//Returns the file.
-		Object file = context.getImageService().exportImageAsOMEFormat(ctx, 
-				OmeroImageService.EXPORT_AS_OMETIFF, imageID, 
-				new File(FilenameUtils.concat(folderPath, name)), null);
-		Map<Boolean, Object> files = new HashMap<Boolean, Object>();
-		files.put(Boolean.valueOf(true), Arrays.asList(file));
-		return files;
+		return gateway.getArchivedFiles(ctx, folderPath, image);
 	}
 
 	/**
@@ -586,7 +547,7 @@ class OmeroDataServiceImpl
 		
 		ParametersI po = new ParametersI();
 		po.leaves();
-		po.exp(omero.rtypes.rlong(userID));
+		if (userID >= 0) po.exp(omero.rtypes.rlong(userID));
 		if (startTime != null) 
 			po.startTime(omero.rtypes.rtime(startTime.getTime()));
 		if (endTime != null) 
@@ -628,7 +589,7 @@ class OmeroDataServiceImpl
 		throws DSOutOfServiceException, DSAccessException
 	{
 		if (ctx == null)
-			throw new IllegalArgumentException("No scontext defined.");
+			throw new IllegalArgumentException("No security context defined.");
 		if (context == null)
 			throw new IllegalArgumentException("No search context defined.");
 		if (!context.isValid())
@@ -640,7 +601,7 @@ class OmeroDataServiceImpl
 					gateway.searchByTime(ctx, context));
 			return results;
 		}
-		Object result = gateway.performSearch(ctx, context); 
+		Object result = gateway.performSearch(ctx, context);
 		//Should returns a search context for the moment.
 		//collection of images only.
 		Map m = (Map) result;
@@ -652,11 +613,14 @@ class OmeroDataServiceImpl
 		Set images;
 		DataObject img;
 		List owners = context.getOwners();
-		Set<Long> ownerIDs = new HashSet<Long>(owners.size());
-		k = owners.iterator();
-		while (k.hasNext()) {
-			ownerIDs.add(((DataObject) k.next()).getId());
+		Set<Long> ownerIDs = new HashSet<Long>();
+		if (owners != null) {
+			k = owners.iterator();
+			while (k.hasNext()) {
+				ownerIDs.add(((DataObject) k.next()).getId());
+			}
 		}
+		if (m == null) return results;
 		
 		Set<DataObject> nodes;
 		Object v;
@@ -802,7 +766,7 @@ class OmeroDataServiceImpl
 			long plateID, long acquisitionID, long userID) 
 		throws DSOutOfServiceException, DSAccessException
 	{
-		return gateway.loadPlateWells(ctx, plateID, acquisitionID, userID);
+		return gateway.loadPlateWells(ctx, plateID, acquisitionID);
 	}
 
 	/**

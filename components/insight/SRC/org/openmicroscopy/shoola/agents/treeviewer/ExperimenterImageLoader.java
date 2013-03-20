@@ -35,9 +35,11 @@ import org.openmicroscopy.shoola.agents.treeviewer.browser.Browser;
 import org.openmicroscopy.shoola.agents.util.browser.TreeFileSet;
 import org.openmicroscopy.shoola.agents.util.browser.TreeImageSet;
 import org.openmicroscopy.shoola.agents.util.browser.TreeImageTimeSet;
+import org.openmicroscopy.shoola.env.data.OmeroMetadataService;
 import org.openmicroscopy.shoola.env.data.util.SecurityContext;
 import org.openmicroscopy.shoola.env.data.views.CallHandle;
 import pojos.ExperimenterData;
+import pojos.GroupData;
 
 /** 
  * Retrieves images before or after a given day, or during a period of time.
@@ -67,13 +69,30 @@ public class ExperimenterImageLoader
     /** Handle to the asynchronous call so that we can cancel it. */
     private CallHandle  		handle;
     
+    private int convertType(int type)
+    {
+    	switch (type) {
+	    	case TreeFileSet.EXPERIMENT:
+	    		return OmeroMetadataService.EDITOR_EXPERIMENT;
+	    	case TreeFileSet.TAG:
+	    		return OmeroMetadataService.TAG_NOT_OWNED;
+	    	case TreeFileSet.PROTOCOL:
+	    		return OmeroMetadataService.EDITOR_PROTOCOL;
+	    	case TreeFileSet.MOVIE:
+	    		return OmeroMetadataService.MOVIE;
+	    	case TreeFileSet.OTHER:
+	    		default:
+	    		return OmeroMetadataService.OTHER;
+		}
+    }
+    
     /**
      * Creates a new instance. 
      * 
      * @param viewer The viewer this data loader is for.
      *               Mustn't be <code>null</code>.
      * @param ctx The security context.
-     * @param expNode The node hosting the experimenter the data are for.
+     * @param expNode The node hosting the experimenter/group the data are for.
      *                Mustn't be <code>null</code>.
      * @param smartFolderNode The node hosting the information about
      *                        the smart folder. Mustn't be <code>null</code>.
@@ -82,9 +101,11 @@ public class ExperimenterImageLoader
     		TreeImageSet expNode, TreeImageSet smartFolderNode)
     {
     	super(viewer, ctx);
-        if (expNode == null ||
-        		!(expNode.getUserObject() instanceof ExperimenterData))
-        	throw new IllegalArgumentException("Experimenter node not valid.");
+        if (expNode == null)
+        	throw new IllegalArgumentException("Node not valid.");
+        Object ho = expNode.getUserObject();
+        if (!(ho instanceof ExperimenterData || ho instanceof GroupData))
+        	throw new IllegalArgumentException("Node not valid.");
         if (smartFolderNode == null)
         	throw new IllegalArgumentException("No smart folder specified.");
         this.expNode = expNode;
@@ -97,14 +118,21 @@ public class ExperimenterImageLoader
      */
     public void load()
     {
-    	ExperimenterData exp = (ExperimenterData) expNode.getUserObject();
+    	long expID = -1;
+    	if (expNode.getUserObject() instanceof ExperimenterData)
+    		expID = ((ExperimenterData) expNode.getUserObject()).getId();
+    	
     	if (smartFolderNode instanceof TreeImageTimeSet) {
     		TreeImageTimeSet time = (TreeImageTimeSet) smartFolderNode;
     		handle = dhView.loadImages(ctx, time.getStartTime(),
-					time.getEndTime(), exp.getId(), this);	
+					time.getEndTime(), expID, this);
     	} else if (smartFolderNode instanceof TreeFileSet) {
-    		handle = dhView.loadFiles(ctx, 
-    			((TreeFileSet) smartFolderNode).getType(), exp.getId(), this);	
+    		TreeFileSet set = (TreeFileSet) smartFolderNode;
+    		if (set.getType() == TreeFileSet.ORPHANED_IMAGES) {
+    			handle = dmView.loadImages(ctx, expID, true, this);
+    		} else
+    			handle = dhView.loadFiles(ctx, convertType(set.getType()),
+    					expID, this);
     	}
     }
 

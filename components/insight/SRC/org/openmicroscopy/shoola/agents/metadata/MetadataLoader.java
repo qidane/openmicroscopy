@@ -89,16 +89,43 @@ public abstract class MetadataLoader
     /** The security context.*/
     protected final SecurityContext ctx;
     
+    /** The identifier of the loader.*/
+    protected int loaderID;
+    
+    /**
+     * Logs the error and notifies the user depending on the specified flag.
+     * 
+     * @param exc The exception to handle.
+     * @param notify Pass <code>true</code> to notify the user,
+     * <code>false</code> otherwise.
+     */
+    protected void handleException(Throwable exc, boolean notify)
+    {
+    	int state = viewer.getState();
+    	String s = "Data Retrieval Failure: ";
+    	LogMessage msg = new LogMessage();
+        msg.print("State: "+state);
+        msg.print(s);
+        msg.print(exc);
+        registry.getLogger().error(this, msg);
+        if (notify && state != MetadataViewer.DISCARDED)
+        	registry.getUserNotifier().notifyError("Data Retrieval Failure",
+                                               s, exc);
+        viewer.cancel(loaderID);
+    }
+    
     /**
      * Creates a new instance.
      * 
      * @param viewer The viewer this data loader is for.
      *               Mustn't be <code>null</code>.
      * @param ctx The security context.
+     * @param loaderID The identifier of the loader.
      */
-    public MetadataLoader(MetadataViewer viewer, SecurityContext ctx)
+    public MetadataLoader(MetadataViewer viewer, SecurityContext ctx, int
+    		loaderID)
     {
-    	this(viewer, ctx, null);
+    	this(viewer, ctx, null, loaderID);
     }
     
     /**
@@ -108,9 +135,10 @@ public abstract class MetadataLoader
      *               Mustn't be <code>null</code>.
      * @param ctx The security context.
      * @param refNode The node of reference. Mustn't be <code>null</code>.
+     * @param loaderID The identifier of the loader.
      */
     public MetadataLoader(MetadataViewer viewer, SecurityContext ctx,
-    		TreeBrowserDisplay refNode)
+    		TreeBrowserDisplay refNode, int loaderID)
     {
     	if (viewer == null) throw new NullPointerException("No viewer.");
     	if (ctx == null)
@@ -118,6 +146,7 @@ public abstract class MetadataLoader
     	this.ctx = ctx;
     	this.viewer = viewer;
     	this.refNode = refNode;
+    	this.loaderID = loaderID;
     	registry = MetadataViewerAgent.getRegistry();
     	mhView = (MetadataHandlerView) 
     	registry.getDataServicesView(MetadataHandlerView.class);
@@ -142,8 +171,6 @@ public abstract class MetadataLoader
     {
         String info = "The data retrieval has been cancelled.";
         registry.getLogger().info(this, info);
-        //registry.getUserNotifier().notifyInfo("Data Retrieval Cancellation", 
-        //info);
     }
     
     /**
@@ -151,19 +178,9 @@ public abstract class MetadataLoader
      * {@link #viewer}.
      * @see DSCallAdapter#handleException(Throwable)
      */
-    public void handleException(Throwable exc) 
+    public void handleException(Throwable exc)
     {
-    	int state = viewer.getState();
-    	String s = "Data Retrieval Failure: ";
-    	LogMessage msg = new LogMessage();
-        msg.print("State: "+state);
-        msg.print(s);
-        msg.print(exc);
-        registry.getLogger().error(this, msg);
-        if (state != MetadataViewer.DISCARDED)
-        	registry.getUserNotifier().notifyError("Data Retrieval Failure", 
-                                               s, exc);
-        viewer.cancel(refNode);
+    	handleException(exc, true);
     }
     
     /** Fires an asynchronous data loading. */

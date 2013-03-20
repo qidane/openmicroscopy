@@ -47,17 +47,36 @@ public class LookupNames
 {
 
 	/** 
+	 * Field indicating how to display the data i.e. 
+	 * <code>group</code> display, <code>experimenter</code>.
+	 */
+	public static final String DATA_DISPLAY = "DataDisplay";
+	
+	/** 
+	 * Field associated to the <code>DATA_DISPLAY</code> field.
+	 */
+	public static final int GROUP_DISPLAY = 0;
+	
+	/** 
+	 * Field associated to the <code>EXPERIMENTER_DISPLAY</code> field.
+	 */
+	public static final int EXPERIMENTER_DISPLAY = 1;
+	
+	/** 
 	 * Field associated to the <code>ImageJ</code> plugin.
 	 */
-	public static final int IMAGE_J = 100;
+	public static final int IMAGE_J = 1;
 	
 	/** 
 	 * Field associated to the <code>Knime</code> plugin.
 	 */
-	public static final int KNIME = 101;
+	public static final int KNIME = 2;
 	
 	/** Field to access the plugin.*/
 	public static final String PLUGIN = "Plugin";
+	
+	/** Field to access the plugin dependencies and information.*/
+	public static final String PLUGINS = "/plugins";
 	
 	/** 
 	 * Field indicating the value associated to the

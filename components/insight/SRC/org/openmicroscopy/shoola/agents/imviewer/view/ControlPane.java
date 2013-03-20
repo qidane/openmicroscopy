@@ -1341,15 +1341,11 @@ class ControlPane
     	}
     	//big images.
     	if (model.isBigImage()) {
-    		if (model.getState() == ImViewer.LOADING_TILES) {
-    			ratioSlider.setEnabled(false);
-    			gridRatioSlider.setEnabled(false);
-    			projectionRatioSlider.setEnabled(false);
-    		} else {
-    			ratioSlider.setEnabled(true);
-    			gridRatioSlider.setEnabled(true);
-    			projectionRatioSlider.setEnabled(true);
-    		}
+    		boolean loading = model.getState() != ImViewer.LOADING_TILES;
+    		ratioSlider.setEnabled(loading);
+			gridRatioSlider.setEnabled(loading);
+			projectionRatioSlider.setEnabled(loading);
+			if (resetZoom != null) resetZoom.setEnabled(loading);
     	}
     }
     
@@ -1816,6 +1812,34 @@ class ControlPane
     	String tip = "Selected Range Z="+(start+1)+"-"+(end+1)+
     	"/"+(model.getMaxZ()+1);
     	projectionRange.setToolTipText(tip);
+    }
+    
+    /**
+     * Updates the component displaying the channels' details after update.
+     */
+    void onChannelUpdated()
+    {
+    	Iterator<ChannelButton> i = channelButtons.iterator();
+    	ChannelData data;
+    	ChannelButton cb;
+    	while (i.hasNext()) {
+			cb = i.next();
+			data = model.getChannelData(cb.getChannelIndex());
+			cb.setText(data.getChannelLabeling());
+		}
+        i = channelButtonsGrid.iterator();
+        while (i.hasNext()) {
+			cb = i.next();
+			data = model.getChannelData(cb.getChannelIndex());
+			cb.setText(data.getChannelLabeling());
+		}
+        i = channelButtonsProjection.iterator();
+        while (i.hasNext()) {
+			cb = i.next();
+			data = model.getChannelData(cb.getChannelIndex());
+			cb.setText(data.getChannelLabeling());
+		}
+        repaint();
     }
     
     /**

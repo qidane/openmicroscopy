@@ -478,12 +478,10 @@ class BlitzObjectWrapper (object):
         """
         Determines whether user can create 'hard' links (Not annotation links).
         E.g. Between Project/Dataset/Image etc.
-        We have decided to restrict the clients to only allow the OWNER of data
-        to create these links.
-        The server is more permissive. To see what the server will allow,
-        use self.getDetails().getPermissions().canLink()
+        Previously (4.4.6 and earlier) we only allowed this for object owners, but now we delegate
+        to what the server will allow.
         """
-        return self.isOwned()
+        return self.getDetails().getPermissions().canLink()
 
     def canAnnotate(self):
         """
@@ -804,41 +802,8 @@ class BlitzObjectWrapper (object):
         @rtype:             L{AnnotationWrapper} generator
         """
         
-        if anntype is not None:
-            if anntype.title() not in ('Text', 'Tag', 'File', 'Long', 'Boolean'):
-                raise AttributeError('It only retrieves: Text, Tag, File, Long, Boolean')
-            sql = "select an from %sAnnotation as an " % anntype.title()
-        else:
-            sql = "select an from Annotation as an " \
-        
-        if anntype.title() == "File":
-            sql += " join fetch an.file "
-        
-        p = omero.sys.Parameters()
-        p.map = {}
-        
-        filterlink = ""
-        if addedByMe:
-            userId = self._conn.getUserId()
-            filterlink = " and obal.details.owner.id=:linkOwner"
-            p.map["linkOwner"] = rlong(userId)
-        
-        sql += "where not exists ( select obal from %sAnnotationLink as obal "\
-                "where obal.child=an.id and obal.parent.id=:oid%s)" % (self.OMERO_CLASS, filterlink)
-        
-        q = self._conn.getQueryService()                
-        p.map["oid"] = rlong(self._oid)
-        if ns is None:            
-            sql += " and an.ns is null"
-        else:
-            p.map["ns"] = rlist([rstring(n) for n in ns])
-            sql += " and (an.ns not in (:ns) or an.ns is null)"        
-        if eid is not None:
-            sql += " and an.details.owner.id=:eid"
-            p.map["eid"] = rlong(eid)
- 
-        for e in q.findAllByQuery(sql,p,self._conn.SERVICE_OPTS):
-            yield AnnotationWrapper._wrap(self._conn, e)
+        return self._conn.listOrphanedAnnotations(self.OMERO_CLASS, [self.getId()], eid, ns, anntype, addedByMe)
+
 
     def _linkObject (self, obj, lnkobjtype):
         """
@@ -2406,7 +2371,7 @@ class _BlitzGateway (object):
         colleagues = []
         leaders = []
         default = self.getObject("ExperimenterGroup", gid)
-        if not default.isPrivate() or self.isLeader() or self.isAdmin():
+        if not default.isPrivate() or self.isLeader(gid) or self.isAdmin():
             for d in default.copyGroupExperimenterMap():
                 if d is None or d.child.id.val == userId:
                     continue
@@ -2691,6 +2656,72 @@ class _BlitzGateway (object):
             yield AnnotationLinkWrapper(self, r)
 
 
+    def listOrphanedAnnotations(self, parent_type, parent_ids, eid=None, ns=None, anntype=None, addedByMe=True):
+        """
+        Retrieve all Annotations not linked to the given parents: Projects, Datasets, Images,
+        Screens, Plates OR Wells etc.
+
+        @param parent_type:     E.g. 'Dataset', 'Image' etc.
+        @param parent_ids:      IDs of the parent.
+        @param eid:             Optional filter by Annotation owner
+        @param ns:              Filter by annotation namespace
+        @param anntype:         Optional specify 'Text', 'Tag', 'File', 'Long', 'Boolean'
+        @return:                Generator yielding AnnotationWrappers
+        @rtype:                 L{AnnotationWrapper} generator
+        """
+
+        if anntype is not None:
+            if anntype.title() not in ('Text', 'Tag', 'File', 'Long', 'Boolean'):
+                raise AttributeError('Use annotation type: Text, Tag, File, Long, Boolean')
+            sql = "select an from %sAnnotation as an " % anntype.title()
+        else:
+            sql = "select an from Annotation as an " \
+
+        if anntype.title() == "File":
+            sql += " join fetch an.file "
+
+        p = omero.sys.Parameters()
+        p.map = {}
+
+        filterlink = ""
+        if addedByMe:
+            userId = self.getUserId()
+            filterlink = " and link.details.owner.id=:linkOwner"
+            p.map["linkOwner"] = rlong(userId)
+
+        q = self.getQueryService()
+        wheres = []
+
+        if len(parent_ids) == 1:
+            # We can use a single query to exclude links to a single parent
+            p.map["oid"] = rlong(parent_ids[0])
+            wheres.append("not exists ( select link from %sAnnotationLink as link "\
+                    "where link.child=an.id and link.parent.id=:oid%s)" % (parent_type, filterlink))
+        else:
+            # for multiple parents, we first need to find annotations linked to ALL of them, then exclude those from query
+            p.map["oids"] = omero.rtypes.wrap(parent_ids)
+            query = "select link.child.id, count(link.id) from %sAnnotationLink link where link.parent.id in (:oids)%s group by link.child.id" % (parent_type, filterlink)
+            # count annLinks and check if count == number of parents (all parents linked to annotation)
+            usedAnnIds = [e[0].getValue() for e in q.projection(query,p,self.SERVICE_OPTS) if e[1].getValue() == len(parent_ids)]
+            if len(usedAnnIds) > 0:
+                p.map["usedAnnIds"] = omero.rtypes.wrap(usedAnnIds)
+                wheres.append("an.id not in (:usedAnnIds)")
+
+        if ns is None:
+            wheres.append("an.ns is null")
+        else:
+            p.map["ns"] = rlist([rstring(n) for n in ns])
+            wheres.append("(an.ns not in (:ns) or an.ns is null)")
+        if eid is not None:
+            wheres.append("an.details.owner.id=:eid")
+            p.map["eid"] = rlong(eid)
+
+        if len(wheres) > 0:
+            sql += "where " + " and ".join(wheres)
+
+        for e in q.findAllByQuery(sql,p,self.SERVICE_OPTS):
+            yield AnnotationWrapper._wrap(self, e)
+
     def createImageFromNumpySeq (self, zctPlanes, imageName, sizeZ=1, sizeC=1, sizeT=1, description=None, dataset=None):
         """
         Creates a new multi-dimensional image from the sequence of 2D numpy arrays in zctPlanes.
@@ -2802,6 +2833,68 @@ class _BlitzGateway (object):
             updateService.saveObject(link, self.SERVICE_OPTS)
 
         return ImageWrapper(self, image)
+
+
+    def setChannelNames(self, data_type, ids, nameDict, channelCount=None):
+        """
+        Sets and saves new names for channels of specified Images.
+        If an image has fewer channels than the max channel index in nameDict, then
+        the channel names will not be set for that image.
+
+        @param data_type:   'Image', 'Dataset', 'Plate'
+        @param ids:         Image, Dataset or Plate IDs
+        @param nameDict:    A dict of index:'name' ** 1-based ** E.g. {1:"DAPI", 2:"GFP"}
+        @param channelCount:    If specified, only rename images with this number of channels
+        @return:            {'imageCount':totalImages, 'updateCount':updateCount}
+        """
+
+        if data_type == "Image":
+            imageIds = [long(i) for i in ids]
+        elif data_type == "Dataset":
+            images = self.getContainerService().getImages("Dataset", ids, None, self.SERVICE_OPTS)
+            imageIds = [i.getId().getValue() for i in images]
+        elif data_type == "Plate":
+            imageIds = []
+            plates = self.getObjects("Plate", ids)
+            for p in plates:
+                for well in p._listChildren():
+                    for ws in well.copyWellSamples():
+                        imageIds.append(ws.image.id.val)
+        else:
+            raise AttributeError("setChannelNames() supports data_types 'Image', 'Dataset', 'Plate' only, not '%s'" % data_type)
+
+        queryService = self.getQueryService()
+        params = omero.sys.Parameters()
+        params.map = {'ids': omero.rtypes.wrap( imageIds )}
+
+        # load Pixels, Channels, Logical Channels and Images
+        query = "select p from Pixels p left outer join fetch p.channels as c join fetch c.logicalChannel as lc join fetch p.image as i where i.id in (:ids)"
+        pix = queryService.findAllByQuery(query, params, self.SERVICE_OPTS)
+
+        maxIdx = max(nameDict.keys())
+        toSave = set()      # NB: we may have duplicate Logical Channels (Many Iamges in Plate linked to same LogicalChannel)
+        updateCount = 0
+        ctx = self.SERVICE_OPTS.copy()
+        for p in pix:
+            sizeC = p.getSizeC().getValue()
+            if sizeC < maxIdx:
+                continue
+            if channelCount is not None and channelCount != sizeC:  # Filter by channel count
+                continue
+            updateCount += 1
+            group_id = p.details.group.id.val
+            ctx.setOmeroGroup(group_id)
+            for i, c in enumerate(p.iterateChannels()):
+                if i+1 not in nameDict:
+                    continue
+                lc = c.logicalChannel
+                lc.setName(rstring(nameDict[i+1]))
+                toSave.add(lc)
+
+        toSave = list(toSave)
+        self.getUpdateService().saveCollection(toSave, ctx)
+        return {'imageCount':len(imageIds), 'updateCount':updateCount}
+
 
     def createOriginalFileFromFileObj (self, fo, path, name, fileSize, mimetype=None, ns=None):
         """
@@ -4702,7 +4795,7 @@ _
         Returns a query string for constructing custom queries, loading the screen for each plate.
         """
         query = "select obj from Plate as obj " \
-              "join fetch obj.details.owner join fetch obj.details.group "\
+              "join fetch obj.details.owner as owner join fetch obj.details.group "\
               "join fetch obj.details.creationEvent "\
               "left outer join fetch obj.screenLinks spl " \
               "left outer join fetch spl.parent sc"
@@ -4721,7 +4814,7 @@ class _PlateAcquisitionWrapper (BlitzObjectWrapper):
             if self.startTime is not None and self.endTime is not None:
                 name = "%s - %s" % (datetime.fromtimestamp(self.startTime/1000), datetime.fromtimestamp(self.endTime/1000))
             else:
-                name = "Plate %i" % self.id
+                name = "Run %i" % self.id
         return name
     name = property(getName)
 
@@ -5408,7 +5501,7 @@ class _ChannelWrapper (BlitzObjectWrapper):
         rv = lc.name
         if rv is None or len(rv.strip())==0:
             rv = lc.emissionWave
-        if rv is None or len(str(rv).strip())==0:
+        if rv is None or len(unicode(rv).strip())==0:
             rv = self._idx
         return unicode(rv)
 
@@ -6095,7 +6188,7 @@ class _ImageWrapper (BlitzObjectWrapper):
         return rv.getvalue()
 
     #@setsessiongroup
-    def getThumbnail (self, size=(64,64), z=None, t=None):
+    def getThumbnail (self, size=(64,64), z=None, t=None, direct=True):
         """
         Returns a string holding a rendered JPEG of the thumbnail.
 
@@ -6109,6 +6202,7 @@ class _ImageWrapper (BlitzObjectWrapper):
         @param z: the Z position to use for rendering the thumbnail. If not provided default is used.
         @type t: number
         @param t: the T position to use for rendering the thumbnail. If not provided default is used.
+        @param direct:      If true, force creation of new thumbnail (don't use cached)
         @rtype: string or None
         @return: the rendered JPEG, or None if there was an error.
         """
@@ -6142,12 +6236,18 @@ class _ImageWrapper (BlitzObjectWrapper):
                 return self._getProjectedThumbnail(size, pos)
             if len(size) == 1:
                 if pos is None:
-                    thumb = tb.getThumbnailByLongestSideDirect
+                    if direct:
+                        thumb = tb.getThumbnailByLongestSideDirect
+                    else:
+                        thumb = tb.getThumbnailByLongestSide
                 else:
                     thumb = tb.getThumbnailForSectionByLongestSideDirect
             else:
                 if pos is None:
-                    thumb = tb.getThumbnailDirect
+                    if direct:
+                        thumb = tb.getThumbnailDirect
+                    else:
+                        thumb = tb.getThumbnail
                 else:
                     thumb = tb.getThumbnailForSectionDirect
             args = map(lambda x: rint(x), size)

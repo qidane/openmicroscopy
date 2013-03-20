@@ -417,7 +417,7 @@ class ImViewerComponent
 	}
 
 	/**
-	 * Notifies that the projected image has been created an asks if the 
+	 * Notifies that the projected image has been created and asks if the
 	 * user wants to launch a viewer with the projected image.
 	 * 
 	 * @param message 	The message to display.
@@ -586,13 +586,6 @@ class ImViewerComponent
 	{
 		return events;
 	}
-
-	/**
-	 * Returns the id of the pixels set this viewer is for.
-	 * 
-	 * @return See above.
-	 */
-	long getPixelsID() { return model.getPixelsID(); }
 	
 	/**
 	 * Returns the title associated to the viewer.
@@ -626,12 +619,23 @@ class ImViewerComponent
 		return !isOriginalSettings();
 	}
 	
+	/**
+	 * Sets the display mode.
+	 * 
+	 * @param displayMode The value to set.
+	 */
+	void setDisplayMode(int displayMode)
+	{
+		
+	}
+	
 	/** 
 	 * Implemented as specified by the {@link ImViewer} interface.
-	 * @see ImViewer#activate(RndProxyDef, long)
+	 * @see ImViewer#activate(RndProxyDef, long, int)
 	 */
-	public void activate(RndProxyDef settings, long userID)
+	public void activate(RndProxyDef settings, long userID, int displayMode)
 	{
+		model.setDisplayMode(displayMode);
 		switch (model.getState()) {
 			case NEW:
 				model.setAlternativeSettings(settings, userID);
@@ -729,8 +733,8 @@ class ImViewerComponent
 			int h = model.getTiledImageSizeY();
 			double nx = (double) w/ox;
 			double ny = (double) h/oy;
-			model.getBrowser().setViewLocation(nx, ny);
 			model.getBrowser().setComponentsSize(w, h);
+			model.getBrowser().setViewLocation(nx, ny);
 			//loadTiles(null);
 			postMeasurePlane();
 			return;
@@ -895,14 +899,18 @@ class ImViewerComponent
 		if (model.getState() != LOADING_IMAGE) 
 			throw new IllegalStateException("This method can only be invoked " +
 			"in the LOADING_IMAGE state.");
-		if (image == null) {
-			UserNotifier un = ImViewerAgent.getRegistry().getUserNotifier();
-			un.notifyInfo("Image retrieval", "An error occurred while " +
-					"creating the image.");
+		if (image == null) { //no need to notify.
+			if (ImViewerAgent.hasOpenGLSupport())
+				model.setImageAsTexture(null);
+			else model.setImage(null);
 			return;
 		}
-		if (!(image instanceof BufferedImage || image instanceof TextureData))
+		if (!(image instanceof BufferedImage || 
+				image instanceof TextureData)) {
+			model.setImage(null);
+			model.setImageAsTexture(null);
 			return;
+		}
 		view.removeComponentListener(controller);
 		if (newPlane) postMeasurePlane();
 		newPlane = false;
@@ -1100,9 +1108,8 @@ class ImViewerComponent
 				return;
 		} 
 		if (model.isBigImage()) {
-			//model.fireBirdEyeViewRetrieval();
 			model.resetTiles();
-			loadTiles(model.getBrowser().getVisibleRectangle());
+			loadTiles(null);
 			return;
 		}
 		boolean stop = false;
@@ -2896,6 +2903,7 @@ class ImViewerComponent
 		//if (model.isNumerousChannel()) model.setForLifetime();
 		if (model.getState() == DISCARDED) return;
 		model.onRndLoaded();
+		//view.onR
 		if (!reload) {
 			if (model.isBigImage()) {
 				model.fireBirdEyeViewRetrieval();
@@ -3253,11 +3261,13 @@ class ImViewerComponent
 	{
 		switch (model.getState()) {
 			case LOADING_BIRD_EYE_VIEW:
+				boolean set = false;
 				if (!view.isVisible()) {
 					buildView();
-					renderXYPlane();
+					set = true;
 				}
 				model.setBirdEyeView(image);
+				if (set) renderXYPlane();
 		}
 	}
 	
@@ -3421,6 +3431,28 @@ class ImViewerComponent
 	{
 		return model.getCompressionLevel() != RenderingControl.UNCOMPRESSED;
 	}
+
+	/** 
+	 * Implemented as specified by the {@link ImViewer} interface.
+	 * @see ImViewer#onUpdatedChannels(List)
+	 */
+	public void onUpdatedChannels(List<ChannelData> channels)
+	{
+		model.setChannels(channels);
+		view.onChannelUpdated();
+	}
+	
+	/** 
+	 * Implemented as specified by the {@link ImViewer} interface.
+	 * @see ImViewer#getDisplayMode()
+	 */
+	public int getDisplayMode() { return model.getDisplayMode(); }
+	
+	/** 
+	 * Implemented as specified by the {@link ImViewer} interface.
+	 * @see ImViewer#getPixelsID()
+	 */
+	public long getPixelsID() { return model.getPixelsID(); }
 	
 	/** 
 	 * Overridden to return the name of the instance to save. 

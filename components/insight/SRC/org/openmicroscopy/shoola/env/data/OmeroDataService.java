@@ -75,7 +75,6 @@ public interface OmeroDataService
 	 * @param withLeaves Passed <code>true</code> to retrieve the images,
 	 *                   <code>false</code> otherwise.
 	 * @param userID The identifier of the selected user.
-	 * @param groupID The identifier of the selected user.
 	 * @return  A set of hierarchy trees.
 	 * @throws DSOutOfServiceException If the connection is broken, or logged in
 	 * @throws DSAccessException If an error occurred while trying to 
@@ -83,7 +82,7 @@ public interface OmeroDataService
 	 */
 	public Set loadContainerHierarchy(SecurityContext ctx,
 			Class rootNodeType, List rootNodeIDs, boolean withLeaves,
-			long userID, long groupID)
+			long userID)
 		throws DSOutOfServiceException, DSAccessException;
 
 	/**
@@ -191,12 +190,15 @@ public interface OmeroDataService
 	 * 
 	 * @param ctx The security context.
 	 * @param userID The id of the user.
+	 * @param orphan Indicates to load the images not in any container or all
+	 * the images.
 	 * @return A <code>Set</code> of retrieved images.
 	 * @throws DSOutOfServiceException If the connection is broken, or logged in
 	 * @throws DSAccessException If an error occurred while trying to 
 	 * retrieve data from OMERO service. 
 	 */
-	public Set getExperimenterImages(SecurityContext ctx, long userID)
+	public Set getExperimenterImages(SecurityContext ctx, long userID, boolean
+			orphan)
 		throws DSOutOfServiceException, DSAccessException;
 
 	/**
@@ -280,31 +282,18 @@ public interface OmeroDataService
 		throws DSOutOfServiceException, DSAccessException;
 
 	/**
-	 * Retrieves the channel metadata for the specified pixels sets.
-	 * 
-	 * @param ctx The security context.
-	 * @param pixelsID The id of pixels set.
-	 * @return A list of metadata.
-	 * @throws DSOutOfServiceException If the connection is broken, or logged in
-	 * @throws DSAccessException If an error occurred while trying to 
-	 * retrieve data from OMERO service. 
-	 */
-	public List getChannelsMetadata(SecurityContext ctx, long pixelsID)
-		throws DSOutOfServiceException, DSAccessException;
-
-	/**
 	 * Retrieves and saves locally the archived files.
 	 * 
 	 * @param ctx The security context.
 	 * @param location The location where to save the files.
-	 * @param pixelsID The ID of the pixels set.
+	 * @param imageID The ID of the image.
 	 * @return See above.
 	 * @throws DSOutOfServiceException If the connection is broken, or logged in
 	 * @throws DSAccessException If an error occurred while trying to 
 	 * retrieve data from OMERO service. 
 	 */
 	public Map<Boolean, Object> getArchivedImage(SecurityContext ctx,
-			String location, long pixelsID)
+			String location, long imageID)
 		throws DSOutOfServiceException, DSAccessException;
 
 	/**

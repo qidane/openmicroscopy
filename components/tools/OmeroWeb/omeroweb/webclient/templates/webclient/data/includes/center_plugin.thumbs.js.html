@@ -28,6 +28,19 @@
 
 $(document).ready(function() {
     
+    var showWell = false;
+    // See if the url contains ?show=well-123 OR ?show=well-123|well-567
+    var q = (location.search.length > 1 ? location.search.substring(1).split("&") : []);
+    var qKeys = {},
+        shows, well_id, $well,
+        selected_wells = $("");
+    for(var i = 0; i < q.length; i++){
+        qKeys[q[i].match(/^[^=]+/)] = q[i].replace(/^[^=]+=?/, "");
+    }
+    if (qKeys["show"] && qKeys["show"].substr(0,5) === "well-") {
+        showWell = qKeys["show"];
+    }
+
     var syncPanels = function(get_selected) {
         $("#dataIcons").find("li.ui-selectee").removeClass('ui-selected');    // clear selection
         get_selected.each(function(i) {
@@ -38,6 +51,10 @@ $(document).ready(function() {
                 $("#image_icon-"+imgId).addClass('ui-selected');
             }
         });
+        // Also clear well selection if 'plate' selected
+        if (get_selected.attr('id').split("-")[0] === 'plate') {
+            $("td.ui-selected").removeClass("ui-selected");
+        }
     }
 
     // on change of selection in tree, update center panel
@@ -59,6 +76,11 @@ $(document).ready(function() {
                 $("div#content_details").removeAttr('rel');
             }
             return;
+        }
+
+        // If 'well' selected, do nothing here.
+        if (sel_objs[0].id.split("-")[0] === 'well') {
+            return
         }
 
         if (selected.length > 1) {
@@ -97,12 +119,20 @@ $(document).ready(function() {
             if (datatree.is_leaf(selected)) {   // Load Plate if it's a 'leaf' (No PlateAcquisition)...
                 update['rel'] = oid;
                 update['url'] = prefix+'load_data/'+orel+'/'+oid.split("-")[1]+'/?index='+well_index;
+                if (showWell) {
+                    update['url'] += "&show="+showWell;
+                    showWell = false;
+                }
             } else {
                 update['empty'] = true;
             }
         } else if (orel == "acquisition"){
             update['rel'] = oid;
             update['url'] = prefix+'load_data/'+orel+'/'+oid.split("-")[1]+'/?index='+well_index;
+            if (showWell) {
+                update['url'] += "&show="+showWell;
+                showWell = false;
+            }
         } else if (orel == "dataset") {
             update['rel'] = oid;
             update['url'] = prefix+'load_data/'+orel+'/'+oid.split("-")[1]+'/?view=icon';

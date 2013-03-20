@@ -43,10 +43,13 @@ import org.openmicroscopy.shoola.agents.events.iviewer.RndSettingsSaved;
 import org.openmicroscopy.shoola.agents.events.iviewer.SaveRelatedData;
 import org.openmicroscopy.shoola.agents.events.iviewer.ViewImage;
 import org.openmicroscopy.shoola.agents.events.iviewer.ViewImageObject;
+import org.openmicroscopy.shoola.agents.events.iviewer.ViewerState;
 import org.openmicroscopy.shoola.agents.events.measurement.MeasurementToolLoaded;
 import org.openmicroscopy.shoola.agents.events.measurement.SelectChannel;
 import org.openmicroscopy.shoola.agents.events.measurement.SelectPlane;
+import org.openmicroscopy.shoola.agents.events.metadata.ChannelSavedEvent;
 import org.openmicroscopy.shoola.agents.events.treeviewer.DeleteObjectEvent;
+import org.openmicroscopy.shoola.agents.events.treeviewer.DisplayModeEvent;
 import org.openmicroscopy.shoola.agents.imviewer.view.ImViewer;
 import org.openmicroscopy.shoola.agents.imviewer.view.ImViewerFactory;
 import org.openmicroscopy.shoola.env.Agent;
@@ -58,11 +61,14 @@ import org.openmicroscopy.shoola.env.data.events.ReloadRenderingEngine;
 import org.openmicroscopy.shoola.env.data.events.UserGroupSwitched;
 import org.openmicroscopy.shoola.env.data.events.ViewInPluginEvent;
 import org.openmicroscopy.shoola.env.data.util.AgentSaveInfo;
+import org.openmicroscopy.shoola.env.data.util.SecurityContext;
 import org.openmicroscopy.shoola.env.event.AgentEvent;
 import org.openmicroscopy.shoola.env.event.AgentEventListener;
 import org.openmicroscopy.shoola.env.event.EventBus;
 import org.openmicroscopy.shoola.env.ui.UserNotifier;
 import org.openmicroscopy.shoola.env.ui.ViewObjectEvent;
+
+import pojos.ChannelData;
 import pojos.DataObject;
 import pojos.ExperimenterData;
 import pojos.ImageData;
@@ -97,6 +103,9 @@ public class ImViewerAgent
     /** Reference to the registry. */
     private static Registry         registry; 
     
+    /** The display mode.*/
+	private int displayMode = -1;
+	
     /**
      * Helper method. 
      * 
@@ -187,7 +196,8 @@ public class ImViewerAgent
         }
         	
         if (view != null) {
-        	view.activate(object.getSettings(), object.getSelectedUserID());
+        	view.activate(object.getSettings(), object.getSelectedUserID(),
+        			displayMode);
         	view.setContext(object.getParent(), object.getGrandParent());
         }
     }
@@ -374,7 +384,8 @@ public class ImViewerAgent
         				evt.getSecurityContext(), ((ImageData) o).getId(),
         				null, true);
         		if (view != null) {
-        			view.activate(null, getUserDetails().getId());
+        			view.activate(null, getUserDetails().getId(),
+        					displayMode);
         			JComponent src = evt.getSource();
         			if (src != null) src.setEnabled(true);
         		}
@@ -409,13 +420,20 @@ public class ImViewerAgent
     	Iterator<DataObject> i = objects.iterator();
     	DataObject object;
     	ImViewer viewer;
+    	EventBus bus = registry.getEventBus();
     	while (i.hasNext()) {
     		object = i.next();
 			if (object instanceof ImageData) {
 				checkImageForDelete((ImageData) object);
 			} else {
 				viewer = ImViewerFactory.getImageViewerFromParent(object);
-				if (viewer != null) viewer.discard();
+				if (viewer != null) {
+					//Post an event to discard Measurement tool
+					ViewerState event = new ViewerState(viewer.getPixelsID(),
+							ViewerState.CLOSE);
+					bus.post(event);
+					viewer.discard();
+				}
 			}
 		}
     }
@@ -463,6 +481,40 @@ public class ImViewerAgent
     }
     
     /**
+     * Updates the view when the channels have been updated.
+     * 
+     * @param evt The event to handle.
+     */
+    private void handleChannelSavedEvent(ChannelSavedEvent evt)
+    {
+    	Environment env = (Environment) registry.lookup(LookupNames.ENV);
+    	if (!env.isServerAvailable()) return;
+    	List<ChannelData> channels = evt.getChannels();
+    	Iterator<Long> i = evt.getImageIds().iterator();
+    	SecurityContext ctx = evt.getSecurityContext();
+    	ImViewer viewer;
+    	while (i.hasNext()) {
+    		viewer = ImViewerFactory.getImageViewerFromImage(ctx, i.next());
+			if (viewer != null) {
+				viewer.onUpdatedChannels(channels);
+			}
+		}
+    }
+    
+    /**
+     * Updates the view when the mode is changed.
+     * 
+     * @param evt The event to handle.
+     */
+    private void handleDisplayModeEvent(DisplayModeEvent evt)
+    {
+    	displayMode = evt.getDisplayMode();
+    	Environment env = (Environment) registry.lookup(LookupNames.ENV);
+    	if (!env.isServerAvailable()) return;
+    	ImViewerFactory.setDisplayMode(displayMode);
+    }
+    
+    /**
      * Checks if the passed image is actually opened in the viewer.
      * 
      * @param image The image to handle.
@@ -472,8 +524,15 @@ public class ImViewerAgent
     	if (image.getId() < 0) return;
     	PixelsData pixels = image.getDefaultPixels();
     	if (pixels == null) return;
+    	EventBus bus = registry.getEventBus();
     	ImViewer viewer = ImViewerFactory.getImageViewer(null, pixels.getId());
-    	if (viewer != null) viewer.discard();
+    	if (viewer != null) {
+    		//Post an event to discard Measurement tool
+    		ViewerState event = new ViewerState(viewer.getPixelsID(),
+    				ViewerState.CLOSE);
+    		bus.post(event);
+    		viewer.discard();
+    	}
     }
 
     /** Creates a new instance. */
@@ -520,6 +579,8 @@ public class ImViewerAgent
         bus.register(this, ReloadRenderingEngine.class);
         bus.register(this, ReconnectedEvent.class);
         bus.register(this, SelectChannel.class);
+        bus.register(this, ChannelSavedEvent.class);
+        bus.register(this, DisplayModeEvent.class);
     }
 
     /**
@@ -586,6 +647,10 @@ public class ImViewerAgent
 			handleReconnectedEvent((ReconnectedEvent) e);
         else if (e instanceof SelectChannel)
 			handleSelectChannel((SelectChannel) e);
+        else if (e instanceof ChannelSavedEvent)
+			handleChannelSavedEvent((ChannelSavedEvent) e);
+        else if (e instanceof DisplayModeEvent)
+			handleDisplayModeEvent((DisplayModeEvent) e);
     }
 
 }

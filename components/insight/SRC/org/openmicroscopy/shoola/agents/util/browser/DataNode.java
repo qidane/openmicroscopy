@@ -33,6 +33,8 @@ import org.openmicroscopy.shoola.agents.util.EditorUtil;
 
 import pojos.DataObject;
 import pojos.DatasetData;
+import pojos.ExperimenterData;
+import pojos.GroupData;
 import pojos.ProjectData;
 import pojos.ScreenData;
 
@@ -195,6 +197,19 @@ public class DataNode
 	public DataObject getDataObject() { return data; }
 	
 	/**
+	 * Returns the user who owns the data.
+	 * 
+	 * @return See above.
+	 */
+	public ExperimenterData getOwner()
+	{
+		if (data.getId() < 0) return null;
+		if (data instanceof GroupData || data instanceof ExperimenterData)
+			return null;
+		return data.getOwner();
+	}
+	
+	/**
 	 * Returns <code>true</code> if the object corresponding to the passed 
 	 * name is new, <code>false</code> otherwise.
 	 * 
@@ -325,7 +340,7 @@ public class DataNode
 	}
 	
 	/**
-	 * Returns <code>true</code> if the node is a default node for screen, 
+	 * Returns <code>true</code> if the node is a default node for project, 
 	 * <code>false</code> otherwise.
 	 *  
 	 * @return See above.

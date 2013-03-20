@@ -9,12 +9,16 @@
 #include <omero/model/DetailsI.h>
 #include <omero/API.h>
 
+#if ICE_INT_VERSION / 100 >= 304
+::Ice::Object* IceInternal::upCast(::omero::model::DetailsI* p) { return p; }
+#endif
+
 namespace omero {
 
     namespace model {
 
 	DetailsI::DetailsI(
-                const omero::client_ptr& client)
+                const omero::client* client)
                     : Details(), client(client) {
             if (client) {
                 session = client->getSession();

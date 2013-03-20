@@ -33,6 +33,9 @@ import javax.swing.event.ChangeListener;
 //Third-party libraries
 
 //Application-internal dependencies
+import pojos.DataObject;
+import pojos.ImageData;
+import pojos.WellSampleData;
 
 /** 
  * Factory to create {@link MetadataViewer} component.
@@ -101,6 +104,37 @@ public class MetadataViewerFactory
 	}
 	
 	/**
+	 * Returns the {@link MetadataViewer} associated to the object specified.
+	 * 
+	 * @param objectType The type of object to handle.
+	 * @param id The id of the object the component is for.
+	 * @return See above.
+	 */
+	public static MetadataViewer getViewerFromId(String objectType, long id)
+	{
+		Iterator<MetadataViewer> i = singleton.viewers.iterator();
+		MetadataViewerComponent viewer;
+		Object ref;
+		String name;
+		long refId;
+		while (i.hasNext()) {
+			viewer = (MetadataViewerComponent) i.next();
+			ref = viewer.getRefObject();
+			name = ref.getClass().getName();
+			if (ref instanceof WellSampleData)
+				name = ImageData.class.getName();
+			if (name.equals(objectType) && ref instanceof DataObject) {
+				refId =  ((DataObject) ref).getId();
+				if (ref instanceof WellSampleData)
+					refId = ((WellSampleData) ref).getImage().getId();
+				if (id == refId) return viewer;
+			}
+				
+		}
+		return null;
+	}
+	
+	/**
 	 * Returns the instances to save.
 	 * 
 	 * @return See above.
@@ -109,13 +143,28 @@ public class MetadataViewerFactory
 	{
 		if (singleton.viewers.size() == 0) return null;
 		List<Object> instances = new ArrayList<Object>();
-		Iterator i = singleton.viewers.iterator();
+		Iterator<MetadataViewer> i = singleton.viewers.iterator();
 		MetadataViewerComponent comp;
 		while (i.hasNext()) {
 			comp = (MetadataViewerComponent) i.next();
 			if (comp.hasDataToSave()) instances.add(comp);
 		}
 		return instances;
+	}
+	
+	/**
+	 * Sets the display mode.
+	 * 
+	 * @param displayMode The value to set.
+	 */
+	public static void setDiplayMode(int displayMode)
+	{
+		Iterator<MetadataViewer> i = singleton.viewers.iterator();
+		MetadataViewerComponent comp;
+		while (i.hasNext()) {
+			comp = (MetadataViewerComponent) i.next();
+			comp.setDisplayMode(displayMode);
+		}
 	}
 	
 	/** 

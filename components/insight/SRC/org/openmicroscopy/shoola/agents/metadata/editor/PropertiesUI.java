@@ -25,7 +25,10 @@ package org.openmicroscopy.shoola.agents.metadata.editor;
 
 
 //Java imports
+import info.clearthought.layout.TableLayout;
+
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
@@ -43,8 +46,8 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Map.Entry;
+
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -63,9 +66,7 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.Document;
 
-//Third-party libraries
-
-//Application-internal dependencies
+import org.jdesktop.swingx.JXTaskPane;
 import org.openmicroscopy.shoola.agents.events.editor.EditFileEvent;
 import org.openmicroscopy.shoola.agents.events.iviewer.ViewImage;
 import org.openmicroscopy.shoola.agents.events.iviewer.ViewImageObject;
@@ -80,6 +81,7 @@ import org.openmicroscopy.shoola.util.ui.UIUtilities;
 import org.openmicroscopy.shoola.util.ui.UnitsObject;
 import org.openmicroscopy.shoola.util.ui.omeeditpane.OMEWikiComponent;
 import org.openmicroscopy.shoola.util.ui.omeeditpane.WikiDataObject;
+
 import pojos.AnnotationData;
 import pojos.ChannelData;
 import pojos.DatasetData;
@@ -103,6 +105,8 @@ import pojos.WellSampleData;
  * <a href="mailto:j.burel@dundee.ac.uk">j.burel@dundee.ac.uk</a>
  * @author Donald MacDonald &nbsp;&nbsp;&nbsp;&nbsp;
  * <a href="mailto:donald@lifesci.dundee.ac.uk">donald@lifesci.dundee.ac.uk</a>
+ * @author Scott Littlewood &nbsp;&nbsp;&nbsp;&nbsp;
+ * <a href="mailto:sylittlewood@dundee.ac.uk">sylittlewood@dundee.ac.uk</a>
  * @version 3.0
  * <small>
  * (<b>Internal version:</b> $Revision: $Date: $)
@@ -133,14 +137,29 @@ class PropertiesUI
     /** Action ID indicating to edit the description.*/
     private static final int	EDIT_DESC = 1;
     
+    /** Action ID indicating to edit the channels.*/
+    private static final int	EDIT_CHANNEL = 2;
+    
+    /** Text indicating to edit the name.*/
+    private static final String EDIT_NAME_TEXT = "Edit the name";
+    
+    /** Text indicating to edit the description.*/
+    private static final String EDIT_DESC_TEXT = "Edit the description.";
+    
+    /**Text indicating to edit the channels.*/
+    private static final String EDIT_CHANNEL_TEXT = "Edit the channels.";
+
     /** The default height of the description.*/
-    private static final int HEIGHT = 60;
+    private static final int HEIGHT = 120;
+    
+    /** The default width of the description.*/
+    private static final int WIDTH = 100;
     
     /** Button to edit the name. */
 	private JButton				editName;
 	
-	/** Button to add documents. */
-	private JButton				editDescription;
+	/** Button to edit the description. */
+	private JButton				descriptionButtonEdit;
 	
     /** The name before possible modification.*/
     private String				originalName;
@@ -158,12 +177,12 @@ class PropertiesUI
     private JTextArea			typePane;
     
     /** The component hosting the description of the <code>DataObject</code>. */
-    private OMEWikiComponent	descriptionPane;
+    private OMEWikiComponent	descriptionWiki;
     
     /** The component hosting the {@link #namePane}. */
     private JPanel				namePanel;
     
-    /** The component hosting the {@link #descriptionPane}. */
+    /** The component hosting the {@link #descriptionWiki}. */
     private JPanel				descriptionPanel;
     
     /** The component hosting the id of the <code>DataObject</code>. */
@@ -202,8 +221,8 @@ class PropertiesUI
 	/** Flag indicating to build the UI once. */
 	private boolean 			init;
 	
-	/** Description pane.*/
-	private JScrollPane			pane;
+	/** ScrollPane hosting the {@link #descriptionWiki} component.*/
+	private JScrollPane			descriptionScrollPane;
 
 	/** The menu displaying the view options.*/
 	private JPopupMenu			viewMenu;
@@ -214,13 +233,77 @@ class PropertiesUI
 	/** Flag indicating that the name is editable mode or not.*/
 	private boolean editableName;
 	
+	/** Button to edit the channels. */
+	private JButton editChannel;
+	
+	/** Component displayed when editing the channels.*/
+	private ChannelEditUI channelEditPane;
+	
+	/** Components hosting the channels' details.*/
+	private JComponent channelsPane;
+
+	/** Builds and lays out the components displaying the channel information.*/
+	private void buildChannelsPane()
+	{
+		editChannel.setVisible(true);
+		channelsPane = channelsArea;
+	}
+	
+	/**
+	 * Returns the <code>JXTaskPane</code> hosting the component.
+	 * 
+	 * @param parent The value to check.
+	 * @return See above.
+	 */
+	private Container getComponent(Container parent)
+	{
+		if (parent == null) return null;
+		if (parent instanceof JXTaskPane) return parent;
+		return getComponent(parent.getParent());
+	}
+	
+	/** Resets the size of the components hosting this component.*/
+	private void resetComponentSize()
+	{
+		Container pane = getComponent(getParent());
+		pane.setSize(getPreferredSize());
+		pane.validate();
+		pane.repaint();
+	}
+	
+	/** Modifies the UI so the user can edit the channels.*/
+	private void editChannels()
+	{
+		if (channelEditPane == null) {
+			Object ho = model.getParentRootObject();
+			if (model.getParentRootObject() instanceof WellData)
+				ho = model.getGrandParentRootObject();
+			channelEditPane = new ChannelEditUI(model.getChannelData(), ho);
+			channelEditPane.addPropertyChangeListener(this);
+		}
+		channelsPane = channelEditPane;
+		editChannel.setVisible(false);
+		removeAll();
+		buildGUI();
+		resetComponentSize();
+	}
+	
+	/** Modifies the UI to display the initial channels details.*/
+	private void cancelChannelsEdit()
+	{
+		buildChannelsPane();
+		removeAll();
+		buildGUI();
+		resetComponentSize();
+	}
+	
 	/** Initializes the components composing this display. */
     private void initComponents()
     {
     	setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setBackground(UIUtilities.BACKGROUND_COLOR);
         Font f;
-       	
+    	
        	parentLabel = new JLabel();
        	f = parentLabel.getFont(); 
        	Font newFont = f.deriveFont(f.getStyle(), f.getSize()-2);
@@ -242,50 +325,25 @@ class PropertiesUI
        	ownerLabel.setBackground(UIUtilities.BACKGROUND_COLOR);
     	namePane = createTextPane();
     	editableName = false;
-    	/*
-    	namePane.addMouseListener(new MouseAdapter() {
-    		public void mousePressed(MouseEvent e) {
-    			if (e.getClickCount() == 2)
-    				editField(namePanel, namePane, editName, true);
-    		}
-		});
-		*/
     	typePane = createTextPane();
     	typePane.setEditable(false);
-    	//namePane.setEditable(false);
     	namePane.addFocusListener(this);
     	f = namePane.getFont(); 
     	newFont = f.deriveFont(f.getStyle(), f.getSize()-2);
-    	descriptionPane = new OMEWikiComponent(false);
+    	
+    	descriptionWiki = new OMEWikiComponent(false);
     	try {
-    		descriptionPane.installObjectFormatters();
+    		descriptionWiki.installObjectFormatters();
 		} catch (Exception e) {
 			//just to be on the save side.
 		}
     	
-    	descriptionPane.setFont(newFont);
-    	//descriptionPane = new RegexTextPane(f.getFamily(), f.getSize()-2);
-    	//descriptionPane.installDefaultRegEx();
-    	//descriptionPane.addPropertyChangeListener(controller);
+    	descriptionWiki.setFont(newFont);
+    	descriptionWiki.setEnabled(false);
+    	descriptionWiki.setAllowOneClick(true);
+    	descriptionWiki.addFocusListener(this);
+    	descriptionWiki.addPropertyChangeListener(this);
     	
-    	//descriptionPane.setBackground(UIUtilities.BACKGROUND_COLOR);
-    	//descriptionPane.setForeground(UIUtilities.DEFAULT_FONT_COLOR);
-    	
-    	descriptionPane.addPropertyChangeListener(this);
-    	//descriptionPane.setLineWrap(true);
-    	//descriptionPane.setColumns(20);
-    	/*
-    	descriptionPane.addMouseListener(new MouseAdapter() {
-    		public void mousePressed(MouseEvent e) {
-    			if (e.getClickCount() == 2)
-    				editField(descriptionPanel, descriptionPane, 
-    						editDescription, true);
-    		}
-		});
-		*/
-    	descriptionPane.setEnabled(false);
-    	descriptionPane.setAllowOneClick(true);
-    	descriptionPane.addFocusListener(this);
     	defaultBorder = namePane.getBorder();
     	namePane.setFont(f.deriveFont(Font.BOLD));
     	typePane.setFont(f.deriveFont(Font.BOLD));
@@ -305,23 +363,34 @@ class PropertiesUI
     	ownerLabel.setFont(f.deriveFont(Font.BOLD, f.getSize()-2));
     	channelsArea = UIUtilities.createComponent(null);
     	
+    	channelsPane = channelsArea;
     	IconManager icons = IconManager.getInstance();
 		editName = new JButton(icons.getIcon(IconManager.EDIT_12));
-		editName.setOpaque(false);
-		UIUtilities.unifiedButtonLookAndFeel(editName);
-		editName.setBackground(UIUtilities.BACKGROUND_COLOR);
-		editName.setToolTipText("Edit the name.");
-		editName.addActionListener(this);
-		editName.setActionCommand(""+EDIT_NAME);
-		editDescription = new JButton(icons.getIcon(IconManager.EDIT_12));
-		editDescription.setOpaque(false);
-		UIUtilities.unifiedButtonLookAndFeel(editDescription);
-		editDescription.setBackground(UIUtilities.BACKGROUND_COLOR);
-		editDescription.setToolTipText("Edit the description.");
-		editDescription.addActionListener(this);
-		editDescription.setActionCommand(""+EDIT_DESC);
-		descriptionPane.setEnabled(false);
-    }   
+		formatButton(editName, EDIT_NAME_TEXT, EDIT_NAME);
+		descriptionButtonEdit = new JButton(icons.getIcon(IconManager.EDIT_12));
+		formatButton(descriptionButtonEdit, EDIT_DESC_TEXT, EDIT_DESC);
+		editChannel = new JButton(icons.getIcon(IconManager.EDIT_12));
+		formatButton(editChannel, EDIT_CHANNEL_TEXT, EDIT_CHANNEL);
+		editChannel.setEnabled(false);
+		descriptionWiki.setEnabled(false);
+    }
+    
+    /**
+     * Formats the specified button.
+     * 
+     * @param button The button to handle.
+     * @param text The tool tip text.
+     * @param actionID The action command id.
+     */
+    private void formatButton(JButton button, String text, int actionID)
+    {
+    	button.setOpaque(false);
+		UIUtilities.unifiedButtonLookAndFeel(button);
+		button.setBackground(UIUtilities.BACKGROUND_COLOR);
+		button.setToolTipText(text);
+		button.addActionListener(this);
+		button.setActionCommand(""+actionID);
+    }
     
     /**
      * Lays out the plate fields.
@@ -492,26 +561,26 @@ class PropertiesUI
 		c.fill = GridBagConstraints.HORIZONTAL;
 		c.anchor = GridBagConstraints.WEST;
 		c.insets = new Insets(0, 2, 2, 0);
-        Set set = components.entrySet();
-        Entry entry;
+        Entry<JLabel, JComponent> entry;
         
-		Iterator i = set.iterator();
+		Iterator<Entry<JLabel, JComponent>> 
+		i = components.entrySet().iterator();
 		c.gridy = 0;
         while (i.hasNext()) {
             c.gridx = 0;
-            entry = (Entry) i.next();
+            entry = i.next();
             ++c.gridy;
        	 	c.gridwidth = GridBagConstraints.RELATIVE; //next-to-last
             c.fill = GridBagConstraints.NONE;      //reset to default
             c.weightx = 0.0;  
-            pane.add((JLabel) entry.getKey(), c);
+            pane.add(entry.getKey(), c);
             c.gridx++;
             pane.add(Box.createHorizontalStrut(5), c); 
             c.gridx++;
-            c.gridwidth = GridBagConstraints.REMAINDER;     //end row
+            c.gridwidth = GridBagConstraints.REMAINDER;//end row
             c.fill = GridBagConstraints.HORIZONTAL;
             c.weightx = 1.0;
-            pane.add((JComponent) entry.getValue(), c);  
+            pane.add(entry.getValue(), c);  
         }
     }
     
@@ -683,15 +752,19 @@ class PropertiesUI
     		label = UIUtilities.setTextFont(EditorUtil.CHANNELS,
     				Font.BOLD, size);
     		c.gridx = 0;
+    		c.anchor = GridBagConstraints.NORTHEAST;
         	content.add(label, c);
-        	c.gridx = c.gridx+2;
-        	content.add(channelsArea, c);
+        	c.anchor = GridBagConstraints.CENTER;
+        	c.gridx++;
+        	content.add(editChannel, c);
+        	c.gridx++;
+        	content.add(channelsPane, c);
     	}
     	JPanel p = UIUtilities.buildComponentPanel(content);
     	p.setBackground(UIUtilities.BACKGROUND_COLOR);
         return p;
     }
-  
+    
     /** 
      * Initializes a <code>TextPane</code>.
      * 
@@ -745,8 +818,8 @@ class PropertiesUI
         	bar.setBackground(UIUtilities.BACKGROUND_COLOR);
         	bar.add(button);
         	p.add(bar, c);
+        	c.gridx++;
     	}
-		c.gridx++;
 		if (sizeRow > 0) {
 			c.ipady = sizeRow;
 			c.gridheight = 2;
@@ -809,11 +882,11 @@ class PropertiesUI
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         JPanel l = UIUtilities.buildComponentPanel(idLabel, 0, 0);
         l.setBackground(UIUtilities.BACKGROUND_COLOR);
-        int w = editName.getIcon().getIconWidth()+4;
-        p.add(layoutEditablefield(null, l));
+        p.add(l);
         l = UIUtilities.buildComponentPanel(ownerLabel, 0, 0);
         l.setBackground(UIUtilities.BACKGROUND_COLOR);
-        p.add(layoutEditablefield(Box.createHorizontalStrut(w), l));
+        p.add(l);
+        int w = editName.getIcon().getIconWidth()+4;
         l = UIUtilities.buildComponentPanel(gpLabel, 0, 0);
         l.setBackground(UIUtilities.BACKGROUND_COLOR);
         p.add(layoutEditablefield(Box.createHorizontalStrut(w), l));
@@ -835,30 +908,29 @@ class PropertiesUI
         	refObject instanceof WellSampleData ||
         	refObject instanceof PlateData ||
         	refObject instanceof ScreenData) {
-        	p.add(Box.createVerticalStrut(5));
-        	descriptionPanel = layoutEditablefield(editDescription, 
-        			descriptionPane, 5);
-        	 //descriptionPanel.setBorder(AnnotationUI.EDIT_BORDER);
-		
-        	pane = new JScrollPane(descriptionPanel);
-        	pane.setHorizontalScrollBarPolicy(
-        			ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        	pane.setBorder(AnnotationUI.EDIT_BORDER);
-        	Dimension d = pane.getPreferredSize();
-        	pane.getViewport().setPreferredSize(new Dimension(d.width, HEIGHT));
-        	p.add(pane);
-         } else if (refObject instanceof FileData) {
-        	 /*
-        	 FileData f = (FileData) refObject;
-        	 if (f.isImage()) {
-        		 p.add(Box.createVerticalStrut(5));
-            	 descriptionPanel = layoutEditablefield(null, 
-            			 			descriptionPane, 80);
-            	 p.add(descriptionPanel);
-        	 }
-        	 */
+        	
+        	descriptionScrollPane = new JScrollPane(descriptionWiki);
+        	descriptionScrollPane.setHorizontalScrollBarPolicy(
+        			ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        	descriptionScrollPane.setBorder(AnnotationUI.EDIT_BORDER);
+        	Dimension viewportSize = new Dimension(WIDTH, HEIGHT); 
+        	descriptionScrollPane.getViewport().setPreferredSize(viewportSize);
+        	
+        	double[][] design = new double[][]
+        			{
+        				{TableLayout.PREFERRED, TableLayout.FILL},
+        				{TableLayout.PREFERRED}
+        			};
+        	
+        	TableLayout table = new TableLayout(design);
+        	descriptionPanel = new JPanel(table);
+        	descriptionPanel.setBackground(UIUtilities.BACKGROUND_COLOR);
+        	descriptionPanel.add(descriptionButtonEdit, "0, 0, c, t");
+        	descriptionPanel.add(descriptionScrollPane, "1, 0");
+        	
+        	p.add(descriptionPanel);
+            p.add(Box.createVerticalStrut(5));
          }
-         p.add(Box.createVerticalStrut(5));
          return p;
     }
     
@@ -944,13 +1016,13 @@ class PropertiesUI
 			namePane.getDocument().addDocumentListener(this);
 			namePane.select(0, 0);
 			namePane.setCaretPosition(0);
-		} else if (field == descriptionPane) {
-			descriptionPane.setEnabled(editable); //was editable
+		} else if (field == descriptionWiki) {
+			descriptionWiki.setEnabled(editable); //was editable
 			if (editable) {
-				pane.setBorder(EDIT_BORDER_BLACK);
+				descriptionScrollPane.setBorder(EDIT_BORDER_BLACK);
 				field.requestFocus();
 			} else {
-				pane.setBorder(EDIT_BORDER);
+				descriptionScrollPane.setBorder(EDIT_BORDER);
 			}
 		}
 	}
@@ -1044,62 +1116,27 @@ class PropertiesUI
 	 */
 	protected void buildUI()
 	{
-		//removeAll();
 		if (!init) {
-			buildGUI();
-			init = true;
-		}
-		if (!model.isSameObject(model.getRefObject())) {
-			channelsArea.setText("");
-			idLabel.setText("");
-			ownerLabel.setText("");
-			parentLabel.setText("");
-			wellLabel.setText("");
-			gpLabel.setText("");
+			//buildGUI();
+			//init = true;
 		}
 		removeAll();
+		Object refObject = model.getRefObject();
+		text = model.getObjectTypeAsString(refObject);
 		if (model.isMultiSelection()) return;
 		namePane.getDocument().removeDocumentListener(this);
-		//descriptionPane.getDocument().removeDocumentListener(this);
-		descriptionPane.removeDocumentListener(this);
+		descriptionWiki.removeDocumentListener(this);
 		originalName = model.getRefObjectName();
 		modifiedName = model.getRefObjectName();
 		originalDisplayedName = UIUtilities.formatPartialName(originalName);
 		namePane.setText(originalDisplayedName);
 		namePane.setToolTipText(originalName);
-		Object refObject = model.getRefObject();
-		text = "";
 		
 		boolean b = model.canEdit();
-        if (refObject instanceof ImageData) text = "Image";
-        else if (refObject instanceof DatasetData) text = "Dataset";
-        else if (refObject instanceof ProjectData) text = "Project";
-        else if (refObject instanceof ScreenData) text = "Screen";
-        else if (refObject instanceof PlateData) text = "Plate";
-        else if (refObject instanceof PlateAcquisitionData)
-        	text = "Plate Run";
-        else if (refObject instanceof FileAnnotationData) {
-        	FileAnnotationData fa = (FileAnnotationData) refObject;
-        	String ns = fa.getNameSpace();
-        	if (FileAnnotationData.EDITOR_EXPERIMENT_NS.equals(ns))
-        		text = "Experiment";
-        	else if (FileAnnotationData.EDITOR_PROTOCOL_NS.equals(ns))
-        		text = "Protocol";
-        	else text = "File";
-        } else if (refObject instanceof WellSampleData) text = "Field";
-        else if (refObject instanceof TagAnnotationData) {
-        	TagAnnotationData tag = (TagAnnotationData) refObject;
-        	if (TagAnnotationData.INSIGHT_TAGSET_NS.equals(tag.getNameSpace()))
-        		text = "Tag Set";
-        	else text = "Tag";
-        } else if (refObject instanceof FileData) {
+		
+        if (refObject instanceof FileData || 
+        	refObject instanceof MultiImageData) {
         	editName.setEnabled(false);
-        	FileData f = (FileData) refObject;
-        	if (f.isDirectory()) text = "Folder";
-        	else text = "File";
-        } else if (refObject instanceof MultiImageData) {
-        	editName.setEnabled(false);
-        	text = "File";
         }
         String t = text;
         if (model.getRefObjectID() > 0)
@@ -1110,30 +1147,33 @@ class PropertiesUI
         }
 		idLabel.setText(t);
 		String ownerName = model.getOwnerName();
+		ownerLabel.setText("");
 		if (ownerName != null && ownerName.length() > 0)
 			ownerLabel.setText(OWNER_TEXT+ownerName);
 		originalDescription = model.getRefObjectDescription();
 		if (originalDescription == null || originalDescription.length() == 0)
 			originalDescription = DEFAULT_DESCRIPTION_TEXT;
-		descriptionPane.setText(originalDescription);
+		descriptionWiki.setText(originalDescription);
 		//wrap();
-		descriptionPane.setCaretPosition(0);
-		descriptionPane.setBackground(UIUtilities.BACKGROUND_COLOR);
-    	descriptionPane.setForeground(UIUtilities.DEFAULT_FONT_COLOR);
+		descriptionWiki.setCaretPosition(0);
+		descriptionWiki.setBackground(UIUtilities.BACKGROUND_COLOR);
+    	descriptionWiki.setForeground(UIUtilities.DEFAULT_FONT_COLOR);
     	
 		
         if (refObject instanceof WellSampleData) b = false;
         
         namePane.setEnabled(b);
-        //descriptionPane.setEnabled(b);
         if (!(refObject instanceof FileData)) editName.setEnabled(b);
         
         if (b) {
         	namePane.getDocument().addDocumentListener(this);
-        	descriptionPane.addDocumentListener(this);
+        	descriptionWiki.addDocumentListener(this);
         }
-        editDescription.setEnabled(b);
+        descriptionButtonEdit.setEnabled(b);
+        editChannel.setEnabled(b);
+        
         setParentLabel();
+        buildChannelsPane();
         buildGUI();
 	}
 	
@@ -1149,11 +1189,11 @@ class PropertiesUI
 		originalDescription = model.getRefObjectDescription();
 		if (originalDescription == null || originalDescription.length() == 0)
 			originalDescription = DEFAULT_DESCRIPTION_TEXT;
-		descriptionPane.setText(originalDescription);
+		descriptionWiki.setText(originalDescription);
         boolean b = model.canEdit();
-        editDescription.setEnabled(b);
+        descriptionButtonEdit.setEnabled(b);
         if (b) {
-        	descriptionPane.addDocumentListener(this);
+        	descriptionWiki.addDocumentListener(this);
         }
 	}
 
@@ -1163,7 +1203,7 @@ class PropertiesUI
 		if (!hasDataToSave()) return;
 		Object object =  model.getRefObject();
 		String name = modifiedName;//namePane.getText().trim();
-		String desc = descriptionPane.getText().trim();
+		String desc = descriptionWiki.getText().trim();
 		if (name != null) {
 			if (name.equals(originalName) || name.equals(originalDisplayedName))
 				name = "";
@@ -1237,6 +1277,7 @@ class PropertiesUI
 	void setChannelData(Map channels)
 	{
 		if (channels == null) return;
+		editChannel.setEnabled(model.canEdit());
 		int n = channels.size()-1;
 		Iterator k = channels.keySet().iterator();
 		int j = 0;
@@ -1332,7 +1373,7 @@ class PropertiesUI
 			return true;
 		
 		name = originalDescription;
-		value = descriptionPane.getText();
+		value = descriptionWiki.getText();
 		value = value.trim();
 		if (name == null) 
 			return value.length() != 0;
@@ -1346,23 +1387,25 @@ class PropertiesUI
 	
 	/**
 	 * Clears the data to save.
-	 * @see AnnotationUI#clearData()
+	 * @see AnnotationUI#clearData(Object)
 	 */
-	protected void clearData()
+	protected void clearData(Object oldObject)
 	{
 		originalName = model.getRefObjectName();
 		originalDisplayedName = originalName;
 		originalDescription = model.getRefObjectDescription();
 		namePane.getDocument().removeDocumentListener(this);
-		descriptionPane.removeDocumentListener(this);
+		descriptionWiki.removeDocumentListener(this);
 		namePane.setText(originalName);
 		if (originalDescription == null || originalDescription.length() == 0)
 			originalDescription = DEFAULT_DESCRIPTION_TEXT;
-		descriptionPane.setText(originalDescription);
+		descriptionWiki.setText(originalDescription);
 		namePane.getDocument().addDocumentListener(this);
-		descriptionPane.addDocumentListener(this);
-		/*
-		if (!model.isSameObject(model.getRefObject())) {
+		descriptionWiki.addDocumentListener(this);
+		channelEditPane = null;
+		if (oldObject == null) return;
+		if (!model.isSameObject(oldObject)) {
+			editChannel.setEnabled(false);
 			channelsArea.setText("");
 			idLabel.setText("");
 			ownerLabel.setText("");
@@ -1370,14 +1413,13 @@ class PropertiesUI
 			wellLabel.setText("");
 			gpLabel.setText("");
 		}
-		*/
 	}
 	
 	/**
 	 * Clears the UI.
 	 * @see AnnotationUI#clearDisplay()
 	 */
-	protected void clearDisplay() { clearData(); }
+	protected void clearDisplay() {}
 
 	/**
 	 * Sets the title of the component.
@@ -1419,8 +1461,11 @@ class PropertiesUI
 				editField(namePanel, namePane, editName, !editableName);
 				break;
 			case EDIT_DESC:
-				editField(descriptionPanel, descriptionPane, editDescription,
-						!descriptionPane.isEnabled());
+				editField(descriptionPanel, descriptionWiki, descriptionButtonEdit,
+						!descriptionWiki.isEnabled());
+				break;
+			case EDIT_CHANNEL:
+				editChannels();
 		}
 	}
 	
@@ -1433,17 +1478,6 @@ class PropertiesUI
 	{
 		Object src = e.getSource();
 		if (src == namePane) {
-			/*
-			editField(namePanel, namePane, editName, false);
-			String text = namePane.getText();
-			editName.setEnabled(true);
-			if (text == null || text.trim().length() == 0) {
-				namePane.getDocument().removeDocumentListener(this);
-				namePane.setText(modifiedName);
-				namePane.getDocument().addDocumentListener(this);
-			}
-			*/
-			//namePane.setCaretPosition(0);
 			String text = namePane.getText();
 			editName.setEnabled(true);
 			namePane.setEditable(false);
@@ -1454,27 +1488,13 @@ class PropertiesUI
 				firePropertyChange(EditorControl.SAVE_PROPERTY, 
 						Boolean.valueOf(false), Boolean.valueOf(true));
 			}
-		} else if (src == descriptionPane) {
-			/*
-			editField(descriptionPanel, descriptionPane, editDescription, 
-					false);
-			editDescription.setEnabled(true);
-			String text = descriptionPane.getText();
+		} else if (src == descriptionWiki) {
+			String text = descriptionWiki.getText();
+			descriptionButtonEdit.setEnabled(true);
 			if (text == null || text.trim().length() == 0) {
-				descriptionPane.getDocument().removeDocumentListener(this);
-				descriptionPane.setText(DEFAULT_DESCRIPTION_TEXT);
-				descriptionPane.getDocument().addDocumentListener(this);
-			}
-			descriptionPane.select(0, 0);
-			*/
-			//editField(descriptionPanel, descriptionPane, editDescription, 
-			//		false);
-			String text = descriptionPane.getText();
-			editDescription.setEnabled(true);
-			if (text == null || text.trim().length() == 0) {
-				descriptionPane.removeDocumentListener(this);
-				descriptionPane.setText(DEFAULT_DESCRIPTION_TEXT);
-				descriptionPane.addDocumentListener(this);
+				descriptionWiki.removeDocumentListener(this);
+				descriptionWiki.setText(DEFAULT_DESCRIPTION_TEXT);
+				descriptionWiki.addDocumentListener(this);
 				firePropertyChange(EditorControl.SAVE_PROPERTY, 
 						Boolean.valueOf(false), Boolean.valueOf(true));
 			}
@@ -1486,47 +1506,16 @@ class PropertiesUI
 	 * source.
 	 * @see FocusListener#focusGained(FocusEvent)
 	 */
-	public void focusGained(FocusEvent e)
-	{
-		Object src = e.getSource();
-		if (src == namePane) {
-			String text = namePane.getText();
-			if (text != null) {
-				
-				//namePane.selectAll();
-				//int n = text.length()-1;
-				//if (n >= 0) namePane.setCaretPosition(n);
-			}
-			//namePane.select(0, 0);
-			//namePane.setCaretPosition(0);
-		}
-	}
+	public void focusGained(FocusEvent e) { }
 	
 	/** 
-	 * Listens to property changes fired by the {@link #descriptionPane}.
+	 * Listens to property changes fired by the {@link #descriptionWiki}.
 	 * @see PropertyChangeListener#propertyChange(PropertyChangeEvent)
 	 */
 	public void propertyChange(PropertyChangeEvent evt)
 	{
 		String name = evt.getPropertyName();
 		EventBus bus = MetadataViewerAgent.getRegistry().getEventBus();
-		/*
-		if (RegexTextPane.REGEX_DBL_CLICKED_PROPERTY.equals(name)) {
-			WikiDataObject object = (WikiDataObject) evt.getNewValue();
-			long id = object.getId();
-			switch (object.getIndex()) {
-				case WikiDataObject.IMAGE:
-					if (id > 0) {
-						bus.post(new ViewImage(id, null));
-					}
-					break;
-				case WikiDataObject.PROTOCOL:
-					bus.post(new EditFileEvent(id));
-					break;
-			}
-		} 
-		*/
-		
 		if (OMEWikiComponent.WIKI_DATA_OBJECT_PROPERTY.equals(name)) {
 			WikiDataObject object = (WikiDataObject) evt.getNewValue();
 			long id = object.getId();
@@ -1565,8 +1554,17 @@ class PropertiesUI
 				case WikiDataObject.PROTOCOL:
 					bus.post(new DataObjectSelectionEvent(
 							FileData.class, id));
-					break;
 			}
+		} else if (ChannelEditUI.CANCEL_PROPERTY.equals(name)) {
+			cancelChannelsEdit();
+		} else if (ChannelEditUI.SAVE_PROPERTY.equals(name)) {
+			List<ChannelData> channels = (List<ChannelData>) evt.getNewValue();
+			model.fireChannelSaving(channels, false);
+			cancelChannelsEdit();
+		} else if (ChannelEditUI.APPLY_TO_ALL_PROPERTY.equals(name)) {
+			List<ChannelData> channels = (List<ChannelData>) evt.getNewValue();
+			model.fireChannelSaving(channels, true);
+			cancelChannelsEdit();
 		}
 	}
 	

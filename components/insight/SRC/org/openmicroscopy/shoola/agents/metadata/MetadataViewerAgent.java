@@ -31,7 +31,10 @@ import java.util.List;
 
 //Third-party libraries
 
+
 //Application-internal dependencies
+import org.openmicroscopy.shoola.agents.events.metadata.ChannelSavedEvent;
+import org.openmicroscopy.shoola.agents.events.treeviewer.DisplayModeEvent;
 import org.openmicroscopy.shoola.agents.metadata.view.MetadataViewer;
 import org.openmicroscopy.shoola.agents.metadata.view.MetadataViewerFactory;
 import org.openmicroscopy.shoola.env.Agent;
@@ -44,9 +47,13 @@ import org.openmicroscopy.shoola.env.data.util.AgentSaveInfo;
 import org.openmicroscopy.shoola.env.data.util.SecurityContext;
 import org.openmicroscopy.shoola.env.event.AgentEvent;
 import org.openmicroscopy.shoola.env.event.AgentEventListener;
+import org.openmicroscopy.shoola.env.event.EventBus;
 import org.openmicroscopy.shoola.env.rnd.RenderingControl;
+import pojos.ChannelData;
 import pojos.ExperimenterData;
 import pojos.GroupData;
+import pojos.ImageData;
+
 
 /** 
  * The MetadataViewerAgent agent. This agent displays metadata related to 
@@ -69,6 +76,9 @@ public class MetadataViewerAgent
 	/** Reference to the registry. */
     private static Registry         registry; 
 
+    /** The display mode.*/
+	private int displayMode = -1;
+	
     /**
      * Helper method. 
      * 
@@ -250,6 +260,40 @@ public class MetadataViewerAgent
     	MetadataViewerFactory.onGroupSwitched(true);
     }
     
+    /**
+     * Updates the view when the channels have been updated.
+     * 
+     * @param evt The event to handle.
+     */
+    private void handleChannelSavedEvent(ChannelSavedEvent evt)
+    {
+    	Environment env = (Environment) registry.lookup(LookupNames.ENV);
+    	if (!env.isServerAvailable()) return;
+    	List<ChannelData> channels = evt.getChannels();
+    	Iterator<Long> i = evt.getImageIds().iterator();
+    	MetadataViewer viewer;
+    	while (i.hasNext()) {
+    		viewer = MetadataViewerFactory.getViewerFromId(
+    				ImageData.class.getName(), i.next());
+			if (viewer != null) {
+				viewer.onUpdatedChannels(channels);
+			}
+		}
+    }
+    
+    /**
+     * Updates the view when the mode is changed.
+     * 
+     * @param evt The event to handle.
+     */
+    private void handleDisplayModeEvent(DisplayModeEvent evt)
+    {
+    	displayMode = evt.getDisplayMode();
+    	Environment env = (Environment) registry.lookup(LookupNames.ENV);
+    	if (!env.isServerAvailable()) return;
+    	MetadataViewerFactory.setDiplayMode(displayMode);
+    }
+    
     /** Creates a new instance. */
     public MetadataViewerAgent() {}
     
@@ -277,8 +321,11 @@ public class MetadataViewerAgent
     public void setContext(Registry ctx)
     {
         registry = ctx;
-        registry.getEventBus().register(this, UserGroupSwitched.class);
-        registry.getEventBus().register(this, ReconnectedEvent.class);
+        EventBus bus = ctx.getEventBus();
+        bus.register(this, UserGroupSwitched.class);
+        bus.register(this, ReconnectedEvent.class);
+        bus.register(this, ChannelSavedEvent.class);
+        bus.register(this, DisplayModeEvent.class);
     }
 
     /**
@@ -304,7 +351,7 @@ public class MetadataViewerAgent
      */
     public void save(List<Object> instances)
     { 
-    	MetadataViewerFactory.saveInstances(instances); 
+    	MetadataViewerFactory.saveInstances(instances);
     }
     
     /**
@@ -317,6 +364,10 @@ public class MetadataViewerAgent
 			handleUserGroupSwitched((UserGroupSwitched) e);
 		else if (e instanceof ReconnectedEvent)
 			handleReconnectedEvent((ReconnectedEvent) e);
+		else if (e instanceof ChannelSavedEvent)
+			handleChannelSavedEvent((ChannelSavedEvent) e);
+		else if (e instanceof DisplayModeEvent)
+			handleDisplayModeEvent((DisplayModeEvent) e);
 	}
-	
+
 }

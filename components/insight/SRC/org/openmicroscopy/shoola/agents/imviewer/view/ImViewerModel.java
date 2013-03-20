@@ -31,8 +31,8 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -48,7 +48,6 @@ import omero.romio.PlaneDef;
 import omero.romio.RegionDef;
 
 import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.lang.StringUtils;
 import org.openmicroscopy.shoola.agents.events.iviewer.CopyRndSettings;
 import org.openmicroscopy.shoola.agents.imviewer.BirdEyeLoader;
 import org.openmicroscopy.shoola.agents.imviewer.ContainerLoader;
@@ -125,6 +124,16 @@ import com.sun.opengl.util.texture.TextureData;
 class ImViewerModel
 {
 
+	
+	/** The maximum size for the bird eye view for standard screen size.*/
+	private static final int BIRD_EYE_SIZE_LOWER = 128;
+	
+	/** The maximum size for the bird eye view for a.*/
+	private static final int BIRD_EYE_SIZE_MEDIUM = 196;
+	
+	/** The maximum size for the bird eye view.*/
+	private static final int BIRD_EYE_SIZE_HEIGH = 256;
+	
 	/** The maximum number of items in the history. */
 	private static final int	MAX_HISTORY = 10;
 	
@@ -141,7 +150,7 @@ class ImViewerModel
 	private static final int	IMAGE = 1;
 	
 	/** Index of the <code>ImageLoader</code> loader. */
-	private static final int	BIRD_EYE_BVIEW = 2;
+	private static final int	BIRD_EYE_VIEW = 2;
 	
 	/** The image to view. */
 	private DataObject 					image; 
@@ -309,6 +318,12 @@ class ImViewerModel
     
     /** The units corresponding to the pixels size.*/
     private UnitsObject refUnits;
+    
+    /** The channels.*/
+    private List<ChannelData> channels;
+    
+    /** The display mode.*/
+    private int displayMode;
     
 	/**
 	 * Creates the plane to retrieve.
@@ -496,6 +511,18 @@ class ImViewerModel
 		selectedUserID = -1;
 		lastProjTime = -1;
 		lastProjRef = null;
+		checkDefaultDisplayMode();
+	}
+	
+	/**
+	 * Invokes the value is not set. 
+	 */
+	private void checkDefaultDisplayMode()
+	{
+		Integer value = (Integer) ImViewerAgent.getRegistry().lookup(
+    			LookupNames.DATA_DISPLAY);
+		if (value == null) setDisplayMode(LookupNames.EXPERIMENTER_DISPLAY);
+		else setDisplayMode(value.intValue());
 	}
 	
 	/** Initializes the {@link #metadataViewer}. */
@@ -685,10 +712,10 @@ class ImViewerModel
 	void cancelBirdEyeView()
 	{
 		state = ImViewer.CANCELLED;
-		DataLoader loader = loaders.get(BIRD_EYE_BVIEW);
+		DataLoader loader = loaders.get(BIRD_EYE_VIEW);
 		if (loader != null) {
 			loader.cancel();
-			loaders.remove(BIRD_EYE_BVIEW);
+			loaders.remove(BIRD_EYE_VIEW);
 		}
 		discard();
 	}
@@ -816,11 +843,23 @@ class ImViewerModel
 	 */
 	List<ChannelData> getChannelData()
 	{ 
+		if (channels != null) return channels;
 		Renderer rnd = metadataViewer.getRenderer();
 		if (rnd == null) return new ArrayList<ChannelData>();
-		return rnd.getChannelData();
+		channels = rnd.getChannelData();
+		return channels;
 	}
 
+	/**
+	 * Sets the channels associated to the image.
+	 * 
+	 * @param channels The channels to set.
+	 */
+	void setChannels(List<ChannelData> channels)
+	{
+		this.channels = channels;
+	}
+	
 	/**
 	 * Returns the <code>ChannelData</code> object corresponding to the
 	 * given index.
@@ -1034,7 +1073,7 @@ class ImViewerModel
 	double setImage(BufferedImage image)
 	{
 		state = ImViewer.READY; 
-		browser.setRenderedImage(image);
+		if (image != null) browser.setRenderedImage(image);
 		loaders.remove(IMAGE);
 		firstTime = false;
 		//update image icon
@@ -1045,6 +1084,7 @@ class ImViewerModel
 			imageIcon = Factory.magnifyImage(factor, image);
 		}
 		*/
+		if (image == null) return 1;
 		return initZoomFactor();
 	}
 
@@ -1175,16 +1215,7 @@ class ImViewerModel
 	boolean isBigImage()
 	{
 		Renderer rnd = metadataViewer.getRenderer();
-		if (rnd == null) {
-			try {
-				Boolean 
-				b = ImViewerAgent.getRegistry().getImageService().isLargeImage(
-						ctx, getImage().getDefaultPixels().getId());
-				if (b != null) return b.booleanValue();
-			} catch (Exception e) {} //ingore
-			
-			return false;
-		}
+		if (rnd == null) return false;
 		return rnd.isBigImage();
 	}
 	
@@ -2139,7 +2170,14 @@ class ImViewerModel
 	 * 
 	 * @return See above.
 	 */
-	boolean isOriginalSettings() { return isSameSettings(originalDef, false); }
+	boolean isOriginalSettings()
+	{
+		if (originalDef == null) return true;
+		if (metadataViewer == null) return true;
+		Renderer rnd = metadataViewer.getRenderer();
+		if (rnd == null) return true;
+		return isSameSettings(originalDef, false);
+	}
 
 	/**
 	 * Returns <code>true</code> if it is the original plane, 
@@ -2385,7 +2423,7 @@ class ImViewerModel
 	double setImageAsTexture(TextureData image)
 	{
 		state = ImViewer.READY; 
-		browser.setRenderedImage(image);
+		if (image != null) browser.setRenderedImage(image);
 		loaders.remove(IMAGE);
 		firstTime = false;
 		//update image icon
@@ -2396,6 +2434,7 @@ class ImViewerModel
 			imageIcon = Factory.magnifyImage(factor, image);
 		}
 		*/
+		if (image == null) return 1;
 		return initZoomFactor();
 	}
 
@@ -2585,7 +2624,6 @@ class ImViewerModel
 		// use the lowest resolution
 		Renderer rnd = metadataViewer.getRenderer();
 		if (rnd == null) return;
-		int level = getSelectedResolutionLevel();
 		PlaneDef pDef = createPlaneDef();
 		Dimension d = getTileSize();
 		int w = d.width;
@@ -2622,18 +2660,22 @@ class ImViewerModel
 		double ratio = 1;
 		w = tiledImageSizeX;
 		h = tiledImageSizeY;
-		if (w < BirdEyeLoader.BIRD_EYE_SIZE || h < BirdEyeLoader.BIRD_EYE_SIZE)
-			ratio = 1;
+		int ref = BIRD_EYE_SIZE_LOWER;
+		Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
+		if (screen.height > 1200 && screen.height <= 1600)
+			ref = BIRD_EYE_SIZE_MEDIUM;
+		else if (screen.height > 1600)
+			ref = BIRD_EYE_SIZE_HEIGH;
+		if (w < ref || h < ref) ratio = 1;
 		else {
-			if (w >= h) ratio = (double) BirdEyeLoader.BIRD_EYE_SIZE/w;
-			else ratio = (double) BirdEyeLoader.BIRD_EYE_SIZE/h;
+			if (w >= h) ratio = (double) ref/w;
+			else ratio = (double) ref/h;
 		}
-		if (ratio < BirdEyeLoader.MIN_RATIO) ratio = BirdEyeLoader.MIN_RATIO;
 		state = ImViewer.LOADING_BIRD_EYE_VIEW;
 		BirdEyeLoader loader = new BirdEyeLoader(component, ctx, getImage(),
 				pDef, ratio);
 		loader.load();
-		loaders.put(BIRD_EYE_BVIEW, loader);
+		loaders.put(BIRD_EYE_VIEW, loader);
 	}
 
 	/**
@@ -2816,7 +2858,7 @@ class ImViewerModel
 	 */
 	void setBirdEyeView(BufferedImage image)
 	{
-		loaders.remove(BIRD_EYE_BVIEW);
+		loaders.remove(BIRD_EYE_VIEW);
 		getBrowser().setBirdEyeView(image);
 	}
 
@@ -2825,12 +2867,27 @@ class ImViewerModel
 	 * otherwise.
 	 * 
 	 * @param pixelsID The id of the pixels set.
-	 * @param ctx
-	 * @return
+	 * @param ctx The security context.
+	 * @return See above.
 	 */
 	boolean isSame(long pixelsID, SecurityContext ctx)
 	{
 		if (getPixelsID() == pixelsID) //add server check
+			return true;
+		return false;
+	}
+	
+	/** 
+	 * Returns <code>true</code> if it is the same viewer, <code>false</code>
+	 * otherwise.
+	 * 
+	 * @param imageID The id of the image.
+	 * @param ctx The security context.
+	 * @return See above.
+	 */
+	boolean isSameImage(long imageID, SecurityContext ctx)
+	{
+		if (getImageID() == imageID) //add server check
 			return true;
 		return false;
 	}
@@ -2873,8 +2930,41 @@ class ImViewerModel
 		if (refUnits != null) return refUnits.getUnits();
 		double size = getPixelsSizeX();
 		if (size < 0) return UnitsObject.MICRONS;
-		refUnits = EditorUtil.transformSize(size); 
+		refUnits = EditorUtil.transformSize(size);
 		return refUnits.getUnits();
 	}
+	
+	/**
+	 * Returns the display mode. One of the constants defined by 
+	 * {@link LookupNames}.
+	 * 
+	 * @return See above.
+	 */
+	int getDisplayMode() { return displayMode; }
     
+	/**
+	 * Sets the display mode.
+	 * 
+	 * @param value The value to set.
+	 */
+	void setDisplayMode(int value)
+	{
+		if (value < 0) {
+			checkDefaultDisplayMode();
+			return;
+		}
+		switch (value) {
+			case LookupNames.EXPERIMENTER_DISPLAY:
+			case LookupNames.GROUP_DISPLAY:
+				displayMode = value;
+				break;
+			default:
+				displayMode = LookupNames.EXPERIMENTER_DISPLAY;
+		}
+		if (containers != null) {
+			containers.clear();
+			containers = null;
+		}
+	}
+
 }
