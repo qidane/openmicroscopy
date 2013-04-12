@@ -2,7 +2,7 @@
 <?python import sitetemplate ?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:py="http://purl.org/kid/ns#" py:extends="sitetemplate">
     <!--
-    * Copyright (C) 2007-2012 University of Dundee & Open Microscopy Environment.
+    * Copyright (C) 2007-2013 University of Dundee & Open Microscopy Environment.
     * All Rights Reserved. 
     -->
 <head py:match="item.tag=='{http://www.w3.org/1999/xhtml}head'" py:attrs="item.items()">
@@ -27,13 +27,7 @@
 			<div id="status_block" class="flash" py:if="value_of('tg_flash', None)" py:content="tg_flash"></div>
 			<div py:replace="[item.text]+item[:]"/>
 		</div>
-        <div id="problem">
-            <h2>Problem with validator</h2>
-            <p>We are experiencing a problem with the online validator hanging while validating files. This appears to be a problem related to the combination of XML parser and web application toolkit we are using. Unfortunately we cannot get this to work reliably so will have to completely re-write the validator. If you need to validate files we recommend to do so using the Bio-Formats command line <code>bftools</code>.</p>
-            <p>For further information check the <a href="http://www.openmicroscopy.org/site/support/faq/ome-xml-and-ome-tiff/how-do-i-validate-a-file-on-the-command-line">OME FAQ</a>. </p>
-            <p>We are sorry for the inconvenience this may cause. </p>
-        </div>
-		<div id="footer"> Copyright &copy;2007-2012 University of Dundee &amp; Open Microscopy Environment.</div>
+		<div id="footer"> Copyright &copy;2007-2013 University of Dundee &amp; Open Microscopy Environment.</div>
 	</div>
 
 </body>
