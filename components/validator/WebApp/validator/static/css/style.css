@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2012 University of Dundee & Open Microscopy Environment.
+ * Copyright (C) 2007-2013 University of Dundee & Open Microscopy Environment.
  * All Rights Reserved. 
  *
  * Quick mash-up of CSS for the TG quick start page.
@@ -107,6 +107,7 @@ td {
 	background-position: center right;
 	margin: 2px;
 	height: 78px;
+	border-top: 14px solid #E6E7E8;
 }
 
 #main_content {
