@@ -25,10 +25,8 @@ package org.openmicroscopy.shoola.env.data;
 
 
 //Java imports
-import java.io.File;
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,7 +42,6 @@ import java.util.Map.Entry;
 import omero.cmd.Delete;
 import omero.model.Annotation;
 import omero.model.AnnotationAnnotationLink;
-import omero.model.Channel;
 import omero.model.Dataset;
 import omero.model.DatasetAnnotationLink;
 import omero.model.DatasetImageLink;
@@ -55,7 +52,6 @@ import omero.model.FileAnnotation;
 import omero.model.IObject;
 import omero.model.Image;
 import omero.model.ImageAnnotationLink;
-import omero.model.Pixels;
 import omero.model.Plate;
 import omero.model.PlateAnnotationLink;
 import omero.model.Project;
@@ -68,7 +64,6 @@ import omero.model.TagAnnotation;
 import omero.sys.Parameters;
 import omero.sys.ParametersI;
 
-import org.apache.commons.io.FilenameUtils;
 import org.openmicroscopy.shoola.env.LookupNames;
 import org.openmicroscopy.shoola.env.config.AgentInfo;
 import org.openmicroscopy.shoola.env.config.Registry;
@@ -78,10 +73,7 @@ import org.openmicroscopy.shoola.env.data.util.ModelMapper;
 import org.openmicroscopy.shoola.env.data.util.PojoMapper;
 import org.openmicroscopy.shoola.env.data.util.SearchDataContext;
 import org.openmicroscopy.shoola.env.data.util.SecurityContext;
-import org.openmicroscopy.shoola.util.filter.file.OMETIFFFilter;
-import org.openmicroscopy.shoola.util.ui.UIUtilities;
 
-import pojos.ChannelData;
 import pojos.DataObject;
 import pojos.DatasetData;
 import pojos.ExperimenterData;
@@ -174,6 +166,21 @@ class OmeroDataServiceImpl
 		//delete the links
 		gateway.deleteObjects(ctx, l);
 		return tags;
+	}
+
+	/**
+	 * Returns the user name or <code>null</code> if the passed user is
+	 * the user currently logged in.
+	 * 
+	 * @param user The user to handle.
+	 * @return See above.
+	 */
+	private String getUserName(ExperimenterData user)
+	{
+		ExperimenterData loggedIn = context.getAdminService().getUserDetails();
+		if (user != null && user.getId() != loggedIn.getId())
+			return user.getUserName();
+		return null;
 	}
 
 	/**
@@ -299,29 +306,18 @@ class OmeroDataServiceImpl
 		if (child == null) 
 			throw new IllegalArgumentException("The child cannot be null.");
 		//Make sure parent is current
-
+		
+		String userName = getUserName(ctx.getExperimenterData());
 		IObject obj = ModelMapper.createIObject(child, parent);
 		if (obj == null) 
 			throw new NullPointerException("Cannot convert the object.");
 
-		IObject created = gateway.createObject(ctx, obj);
+		IObject created = gateway.createObject(ctx, obj, userName);
 		IObject link;
-		/*
-		if (child instanceof TagAnnotationData) {
-			//add description.
-			TagAnnotationData tag = (TagAnnotationData) child;
-			TextualAnnotationData desc = tag.getTagDescription();
-			if (desc != null) {
-				OmeroMetadataService service = context.getMetadataService(); 
-				service.annotate(TagAnnotationData.class, 
-						created.getId().getValue(), desc);
-			}
-		}
-		*/
 		if (parent != null) {
 			link = ModelMapper.linkParentToChild(created, parent.asIObject());
 			if ((child instanceof TagAnnotationData) && link != null) {
-				gateway.createObject(ctx, link);
+				gateway.createObject(ctx, link, userName);
 			}
 		}
 			
@@ -338,6 +334,12 @@ class OmeroDataServiceImpl
 			if (links.size() > 0)
 				gateway.createObjects(ctx, links);
 		}
+		try {
+			gateway.shutDownDerivedConnector(ctx);
+		} catch (Exception e) {
+			context.getLogger().info(this, "Cannot shut down the connectors.");
+		}
+		
 		return PojoMapper.asDataObject(created);
 	}
 
@@ -898,8 +900,8 @@ class OmeroDataServiceImpl
 		Iterator<DataObject> j;
 		DataObject object;
 		IObject link;
-		ExperimenterData exp = (ExperimenterData) context.lookup(
-					LookupNames.CURRENT_USER_DETAILS);
+		String userName = getUserName(ctx.getExperimenterData());
+		ExperimenterData exp = context.getAdminService().getUserDetails();
 		ExperimenterData owner;
 		Experimenter o = null;
 		IObject newObject;
@@ -934,7 +936,7 @@ class OmeroDataServiceImpl
 			}
 			if (toCreate.size() > 0) {
 				toCreate = gateway.saveAndReturnObject(target, toCreate,
-						new HashMap());
+						new HashMap(), userName);
 				targets.addAll(toCreate);
 			}
 			

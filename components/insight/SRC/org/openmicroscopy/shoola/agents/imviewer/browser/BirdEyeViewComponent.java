@@ -269,14 +269,8 @@ class BirdEyeViewComponent
 	{
 		boolean b = inSelection(x, y);
 		if (b) {
-			bover = true;
-			mouseX = x;
-			mouseY = y;
-			bdifx = mouseX-bx;
-			bdify = mouseY-by;
 			setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		} else {
-			bover = false;
 			setCursor(Cursor.getDefaultCursor());
 		}
 	}
@@ -436,8 +430,24 @@ class BirdEyeViewComponent
 		bx = x;
 		by = x;
 		fullDisplay = true;
-		addMouseListener(this);
-		addMouseMotionListener(this);
+		installListeners(true);
+	}
+	
+	/**
+	 * Adds or removes the listeners depending on the specified components.
+	 * 
+	 * @param add Pass <code>true</code> to attach the listeners,
+	 * <code>false</code> otherwise.
+	 */
+	void installListeners(boolean add)
+	{
+		if (add) {
+			addMouseListener(this);
+			addMouseMotionListener(this);
+		} else {
+			removeMouseListener(this);
+			removeMouseMotionListener(this);
+		}
 	}
 	
 	/**
@@ -594,6 +604,11 @@ class BirdEyeViewComponent
 			bx = mouseX-bdifx;
 			by = mouseY-bdify;
 		}
+		locked = true;
+		if (bx <= 0) bx = 1;
+		if (by <= 0) by = 1;
+		if (bx+w >= pImage.getWidth()) bx = pImage.getWidth()-w-1;
+		if (by+h >= pImage.getHeight()) by = pImage.getHeight()-h-1;
 		repaint();
 	}
 	

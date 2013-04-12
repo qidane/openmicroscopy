@@ -158,9 +158,9 @@ class BrowserUI
     {
     	if (region == null) return;
     	Rectangle r = convertFromSelection(region);
+    	getViewport().setViewPosition(new Point(-1, -1));
     	scrollTo(r, false);
     	if (load) model.loadTiles(null);
-    	setBirdEyeViewLocation();
     }
     
     /** Sets the location of the region.*/
@@ -169,18 +169,22 @@ class BrowserUI
     	if (birdEyeView == null) return;
     	Dimension d = birdEyeView.getImageSize();
     	if (d.width == 0 || d.height == 0) return;
-    	Rectangle r = getVisibleRectangle();
-    	Rectangle rl = canvas.getBounds();
-    	int sizeX = rl.width;
-    	int sizeY = rl.height;
+    	Rectangle rect = getVisibleRectangle();
+
+    	int sizeX = model.getTiledImageSizeX();
+    	int sizeY = model.getTiledImageSizeY();
     	int rx = sizeX/d.width;
     	int ry = sizeY/d.height;
     	if (rx == 0) rx = 1;
     	if (ry == 0) ry = 1;
-    	int x = (int) (r.x/rx);
-    	int y = (int) (r.y/ry);
-    	int w = (int) (r.width/rx);
-    	int h = (int) (r.height/ry);
+    	int w = (int) (rect.width/rx);
+    	int h = (int) (rect.height/ry);
+		int x = (int) (rect.x/rx);
+		int y = (int) (rect.y/ry);
+		if (x < 0) x = 0;
+		if (y < 0) y = 0;
+		
+    	
     	birdEyeView.setSelection(x, y, w, h);
     }
     
@@ -386,9 +390,8 @@ class BrowserUI
     		int width = image.getWidth();
         	int height = image.getHeight();
         	Rectangle r = getVisibleRectangle();
-        	Rectangle rl = canvas.getBounds();
-        	int sizeX = rl.width;
-        	int sizeY = rl.height;
+        	int sizeX = model.getTiledImageSizeX();
+        	int sizeY = model.getTiledImageSizeY();
         	int rx = sizeX/width;
         	int ry = sizeY/height;
         	if (rx == 0) rx = 1;
@@ -651,6 +654,7 @@ class BrowserUI
 	void onComponentResized()
 	{ 
 		adjusting = false;
+		center();
 		setSelectionRegion();
 	}
 	
@@ -676,6 +680,8 @@ class BrowserUI
 		if (bar.isVisible()) bar.setEnabled(b);
 		bar = getVerticalScrollBar();
 		if (bar.isVisible()) bar.setEnabled(b);
+		if (birdEyeView != null) birdEyeView.installListeners(b);
+		canvasListener.installListeners(b);
 	}
 	
 	/**
@@ -691,10 +697,9 @@ class BrowserUI
 		double cx = r.getCenterX();
 		double cy = r.getCenterY();
 		
-		Rectangle rl = canvas.getBounds();
 		Rectangle rect = getVisibleRectangle();
-    	int sizeX = rl.width;
-    	int sizeY = rl.height;
+    	int sizeX = model.getTiledImageSizeX();
+    	int sizeY = model.getTiledImageSizeY();
     	int rxx = sizeX/d.width;
     	int ryy = sizeY/d.height;
     	if (rxx == 0) rxx = 1;

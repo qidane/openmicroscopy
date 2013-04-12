@@ -29,7 +29,6 @@ import ome.util.Utils;
 import ome.util.checksum.ChecksumProviderFactory;
 import ome.util.checksum.ChecksumType;
 
-import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.hibernate.HibernateException;
@@ -86,7 +85,7 @@ public class RawFileBean extends AbstractStatefulBean implements RawFileStore {
     public RawFileBean() {}
     
     /**
-     * overriden to allow Spring to set boolean
+     * overridden to allow Spring to set boolean
      * @param checking
      */
     public RawFileBean(boolean checking) {
@@ -156,6 +155,15 @@ public class RawFileBean extends AbstractStatefulBean implements RawFileStore {
 
             String path = ioService.getFilesPath(id);
             try {
+
+                try {
+                    buffer.flush(true);
+                } catch (IOException ie) {
+                    final String msg = "cannot flush " + buffer.getPath() + ": " + ie;
+                    log.warn(msg);
+                    clean();
+                    throw new ResourceError(msg);
+                }
 
                 file.setSha1(this.checksumProviderFactory
                         .getProvider(ChecksumType.SHA1).putFile(path).checksumAsString());
@@ -348,7 +356,9 @@ public class RawFileBean extends AbstractStatefulBean implements RawFileStore {
         }
         
         try {
-            buffer.write(nioBuffer, position);
+            do {
+                position += buffer.write(nioBuffer, position);
+            } while (nioBuffer.hasRemaining());
             modified();
         } catch (IOException e) {
             if (log.isDebugEnabled()) {

@@ -69,6 +69,7 @@ import org.openmicroscopy.shoola.env.data.views.calls.RenderingSettingsSaver;
 import org.openmicroscopy.shoola.env.data.views.calls.TileLoader;
 import org.openmicroscopy.shoola.env.data.views.calls.WorkflowHandler;
 import org.openmicroscopy.shoola.env.event.AgentEventListener;
+import org.openmicroscopy.shoola.env.rnd.RenderingControl;
 import org.openmicroscopy.shoola.env.rnd.RndProxyDef;
 import org.openmicroscopy.shoola.env.rnd.data.Tile;
 
@@ -290,10 +291,10 @@ class ImageDataViewImpl
      * Implemented as specified by the view interface.
      * @see ImageDataView#importImages(long, long, AgentEventListener)
      */
-	public CallHandle importFiles(ImportableObject context,
-			long userID, long groupID, AgentEventListener observer)
+	public CallHandle importFiles(ImportableObject context, 
+			AgentEventListener observer)
 	{
-		BatchCallTree cmd = new ImagesImporter(context, userID, groupID);
+		BatchCallTree cmd = new ImagesImporter(context);
 		return cmd.exec(observer);
 	}
 
@@ -466,10 +467,10 @@ class ImageDataViewImpl
      * AgentEventListener)
      */
 	public CallHandle loadTiles(SecurityContext ctx, long pixelsID,
-		PlaneDef pDef, Collection<Tile> tiles, boolean asTexture,
-			AgentEventListener observer)
+		PlaneDef pDef, RenderingControl proxy, Collection<Tile> tiles,
+		boolean asTexture, AgentEventListener observer)
 	{
-		BatchCallTree cmd = new TileLoader(ctx, pixelsID, pDef, tiles,
+		BatchCallTree cmd = new TileLoader(ctx, pixelsID, pDef, proxy, tiles,
 				asTexture);
 		return cmd.exec(observer);
 	}
